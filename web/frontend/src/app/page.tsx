@@ -8,11 +8,15 @@ import TimeRangePicker, { rangeToHours } from '@/components/ui/TimeRangePicker'
 import GaugeChart from '@/components/charts/GaugeChart'
 import LineChart from '@/components/charts/LineChart'
 
-function toSeries(history: GpuHistory[], key: keyof GpuHistory, color: string, name: string) {
+// DCGM은 bytes 단위로 반환 → MB 변환
+const B_TO_MB = 1 / (1024 * 1024)
+const B_TO_GB = 1 / (1024 * 1024 * 1024)
+
+function toSeries(history: GpuHistory[], key: keyof GpuHistory, color: string, name: string, scale = 1) {
   return [{
     name,
     color,
-    data: history.map(h => ({ t: new Date(h.collected_at), v: (h[key] as number) ?? 0 })),
+    data: history.map(h => ({ t: new Date(h.collected_at), v: ((h[key] as number) ?? 0) * scale })),
   }]
 }
 
@@ -20,13 +24,16 @@ export default function GpuPage() {
   const [range, setRange] = useState<TimeRange>('1H')
   const hours = rangeToHours(range)
 
-  const { data: latest } = useSWR<GpuLatest[]>(api.gpu.latest(), fetcher, { refreshInterval: 60000 })
-  const { data: history } = useSWR<GpuHistory[]>(api.gpu.history(hours, 0), fetcher, { refreshInterval: 60000 })
+  const { data: latest }  = useSWR<GpuLatest[]>(api.gpu.latest(),            fetcher, { refreshInterval: 60000 })
+  const { data: history } = useSWR<GpuHistory[]>(api.gpu.history(hours, 0),  fetcher, { refreshInterval: 60000 })
 
   const gpu = latest?.[0]
 
-  const memTotal = (gpu?.memory_used_mb ?? 0) + (gpu?.memory_free_mb ?? 0)
-  const memPct   = memTotal > 0 ? ((gpu?.memory_used_mb ?? 0) / memTotal) * 100 : 0
+  // bytes → GB
+  const memUsedGB  = (gpu?.memory_used_mb ?? 0) * B_TO_GB
+  const memFreeGB  = (gpu?.memory_free_mb ?? 0) * B_TO_GB
+  const memTotalGB = memUsedGB + memFreeGB
+  const memPct     = memTotalGB > 0 ? (memUsedGB / memTotalGB) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -52,9 +59,9 @@ export default function GpuPage() {
         />
         <MetricCard
           label="Memory Used"
-          value={gpu?.memory_used_mb ? `${(gpu.memory_used_mb / 1024).toFixed(1)}` : null}
+          value={memUsedGB.toFixed(1)}
           unit="GB"
-          sub={memTotal > 0 ? `/ ${(memTotal / 1024).toFixed(1)} GB (${memPct.toFixed(1)}%)` : undefined}
+          sub={memTotalGB > 0 ? `/ ${memTotalGB.toFixed(1)} GB (${memPct.toFixed(1)}%)` : undefined}
         />
         <MetricCard
           label="Temperature"
@@ -71,36 +78,32 @@ export default function GpuPage() {
 
       {/* Gauges + clocks */}
       <div className="grid grid-cols-3 gap-4">
-        {/* GPU Utilization Gauge */}
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
           <p className="text-xs text-slate-500 uppercase tracking-wider">GPU Utilization</p>
           <GaugeChart value={gpu?.gpu_utilization ?? 0} unit="%" />
         </div>
 
-        {/* Memory Gauge */}
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
           <p className="text-xs text-slate-500 uppercase tracking-wider">Memory Usage</p>
           <GaugeChart value={memPct} unit="%" thresholds={[75, 90]} />
           <p className="text-xs text-slate-500">
-            {gpu?.memory_used_mb ? `${(gpu.memory_used_mb / 1024).toFixed(1)}` : '—'} /
-            {memTotal > 0 ? ` ${(memTotal / 1024).toFixed(1)} GB` : ' — GB'}
+            {memUsedGB.toFixed(1)} GB / {memTotalGB.toFixed(1)} GB
           </p>
         </div>
 
-        {/* Clock speeds */}
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-4">
           <p className="text-xs text-slate-500 uppercase tracking-wider">Clock Speeds</p>
           <div>
             <p className="text-xs text-slate-500">SM Clock</p>
             <p className="text-xl font-bold font-mono text-slate-100">
-              {gpu?.sm_clock_mhz ? `${gpu.sm_clock_mhz}` : '—'}
+              {gpu?.sm_clock_mhz ?? '—'}
               <span className="text-sm font-normal text-slate-400 ml-1">MHz</span>
             </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">MEM Clock</p>
             <p className="text-xl font-bold font-mono text-slate-100">
-              {gpu?.mem_clock_mhz ? `${gpu.mem_clock_mhz}` : '—'}
+              {gpu?.mem_clock_mhz ?? '—'}
               <span className="text-sm font-normal text-slate-400 ml-1">MHz</span>
             </p>
           </div>
@@ -116,7 +119,7 @@ export default function GpuPage() {
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">GPU Utilization</p>
           <LineChart
-            series={toSeries(history ?? [], 'gpu_utilization', '#3b82f6', 'Util')}
+            series={toSeries(history ?? [], 'gpu_utilization', '#3b82f6', 'Util %')}
             unit="%" yMin={0} yMax={100}
           />
         </div>
@@ -124,15 +127,15 @@ export default function GpuPage() {
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Memory Used</p>
           <LineChart
-            series={toSeries(history ?? [], 'memory_used_mb', '#8b5cf6', 'Mem Used')}
-            unit=" MB"
+            series={toSeries(history ?? [], 'memory_used_mb', '#8b5cf6', 'Mem GB', B_TO_GB)}
+            unit=" GB"
           />
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Temperature</p>
           <LineChart
-            series={toSeries(history ?? [], 'temperature_celsius', '#f59e0b', 'Temp')}
+            series={toSeries(history ?? [], 'temperature_celsius', '#f59e0b', 'Temp °C')}
             unit="°C"
           />
         </div>
@@ -140,7 +143,7 @@ export default function GpuPage() {
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Power Usage</p>
           <LineChart
-            series={toSeries(history ?? [], 'power_usage_watts', '#10b981', 'Power')}
+            series={toSeries(history ?? [], 'power_usage_watts', '#10b981', 'Power W')}
             unit=" W"
           />
         </div>

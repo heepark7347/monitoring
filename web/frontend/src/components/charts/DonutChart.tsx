@@ -25,19 +25,18 @@ export default function DonutChart({ used, total, size = 140, label }: Props) {
     const r  = size * 0.38
     const arc = d3.arc()
 
-    // bg
     svg.append('path')
       .attr('transform', `translate(${cx},${cy})`)
       .attr('d', arc({ innerRadius: r - 16, outerRadius: r, startAngle: 0, endAngle: Math.PI * 2 }) as string)
-      .attr('fill', '#1e293b')
+      .attr('fill', '#334155')
 
-    // used
-    svg.append('path')
-      .attr('transform', `translate(${cx},${cy})`)
-      .attr('d', arc({ innerRadius: r - 16, outerRadius: r, startAngle: 0, endAngle: Math.PI * 2 * pct }) as string)
-      .attr('fill', color)
+    if (pct > 0) {
+      svg.append('path')
+        .attr('transform', `translate(${cx},${cy})`)
+        .attr('d', arc({ innerRadius: r - 16, outerRadius: r, startAngle: 0, endAngle: Math.PI * 2 * pct }) as string)
+        .attr('fill', color)
+    }
 
-    // center pct
     svg.append('text')
       .attr('x', cx).attr('y', cy + 5)
       .attr('text-anchor', 'middle')
@@ -54,5 +53,5 @@ export default function DonutChart({ used, total, size = 140, label }: Props) {
     }
   }, [used, total, size, label])
 
-  return <svg ref={ref} width={size} height={size} />
+  return <svg ref={ref} width={size} height={size} style={{ display: 'block' }} />
 }

@@ -3,11 +3,11 @@ import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 
 interface Props {
-  value: number       // 0-100
+  value: number
   max?: number
   unit?: string
   size?: number
-  thresholds?: [number, number]  // [warn, critical] default [70, 90]
+  thresholds?: [number, number]
 }
 
 export default function GaugeChart({
@@ -21,35 +21,38 @@ export default function GaugeChart({
 
   useEffect(() => {
     if (!ref.current) return
-    const svg  = d3.select(ref.current)
+
+    const svg = d3.select(ref.current)
     svg.selectAll('*').remove()
+    svg.attr('viewBox', `0 0 ${size} ${size}`)
+       .attr('preserveAspectRatio', 'xMidYMid meet')
 
     const cx = size / 2
     const cy = size / 2
     const r  = size * 0.38
     const arc = d3.arc()
 
-    // background track
+    // 배경 트랙
     svg.append('path')
       .attr('transform', `translate(${cx},${cy})`)
       .attr('d', arc({ innerRadius: r - 14, outerRadius: r, startAngle: -Math.PI * 0.75, endAngle: Math.PI * 0.75 }) as string)
-      .attr('fill', '#1e293b')
+      .attr('fill', '#334155')
 
-    // color based on threshold
     const pct = Math.min(value / max, 1)
     const color =
       pct >= thresholds[1] / 100 ? '#ef4444' :
       pct >= thresholds[0] / 100 ? '#f59e0b' :
       '#10b981'
 
-    // value arc
-    const endAngle = -Math.PI * 0.75 + pct * Math.PI * 1.5
-    svg.append('path')
-      .attr('transform', `translate(${cx},${cy})`)
-      .attr('d', arc({ innerRadius: r - 14, outerRadius: r, startAngle: -Math.PI * 0.75, endAngle }) as string)
-      .attr('fill', color)
+    // 값 아크
+    if (pct > 0) {
+      const endAngle = -Math.PI * 0.75 + pct * Math.PI * 1.5
+      svg.append('path')
+        .attr('transform', `translate(${cx},${cy})`)
+        .attr('d', arc({ innerRadius: r - 14, outerRadius: r, startAngle: -Math.PI * 0.75, endAngle }) as string)
+        .attr('fill', color)
+    }
 
-    // value text
     svg.append('text')
       .attr('x', cx).attr('y', cy + 8)
       .attr('text-anchor', 'middle')
@@ -59,9 +62,8 @@ export default function GaugeChart({
       .attr('fill', '#f1f5f9')
       .text(`${Math.round(value)}`)
 
-    // unit text
     svg.append('text')
-      .attr('x', cx).attr('y', cy + 8 + size * 0.12)
+      .attr('x', cx).attr('y', cy + 8 + size * 0.13)
       .attr('text-anchor', 'middle')
       .attr('font-size', size * 0.1)
       .attr('fill', '#64748b')
@@ -69,5 +71,5 @@ export default function GaugeChart({
 
   }, [value, max, unit, size, thresholds])
 
-  return <svg ref={ref} width={size} height={size} />
+  return <svg ref={ref} width={size} height={size} style={{ display: 'block' }} />
 }

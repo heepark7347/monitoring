@@ -7,7 +7,6 @@ router = APIRouter()
 
 @router.get("/latest")
 def get_disk_latest():
-    """파티션별 최신 디스크 사용량"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -22,22 +21,18 @@ def get_disk_latest():
 
 @router.get("/history")
 def get_disk_history(
-    start:      datetime = Query(default=None),
-    end:        datetime = Query(default=None),
-    mountpoint: str      = Query(default="/"),
+    hours:      float = Query(default=24),
+    mountpoint: str   = Query(default="/"),
 ):
-    now = datetime.now(timezone.utc)
-    if end   is None: end   = now
-    if start is None: start = now - timedelta(hours=1)
-
+    end   = datetime.now(timezone.utc)
+    start = end - timedelta(hours=hours)
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT collected_at, host_ip, mountpoint,
                     total_bytes, avail_bytes, usage_percent
                 FROM disk_metrics
-                WHERE mountpoint = %s
-                  AND collected_at BETWEEN %s AND %s
+                WHERE mountpoint = %s AND collected_at BETWEEN %s AND %s
                 ORDER BY collected_at ASC
             """, (mountpoint, start, end))
             return fetchall_as_dict(cur)
@@ -45,12 +40,7 @@ def get_disk_history(
 
 @router.get("/mountpoints")
 def get_mountpoints():
-    """수집 중인 마운트포인트 목록"""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT DISTINCT mountpoint, device, fstype
-                FROM disk_metrics
-                ORDER BY mountpoint
-            """)
+            cur.execute("SELECT DISTINCT mountpoint, device, fstype FROM disk_metrics ORDER BY mountpoint")
             return fetchall_as_dict(cur)

@@ -217,6 +217,88 @@ SNMP로 수집되는 지표를 Prometheus TSDB에만 보관하던 것에서 Post
 
 ---
 
+## [2026-03-13] 커스텀 모니터링 웹 대시보드 구축 (Next.js + D3.js)
+
+### 목표
+Grafana 외 운영자 편의성 향상을 위한 커스텀 대시보드 구축 — PostgreSQL 수집 데이터 직접 시각화
+
+### 아키텍처
+```
+브라우저 → Next.js (3000) → rewrite 프록시 → FastAPI (8000) → PostgreSQL (30432)
+```
+- 백엔드(FastAPI)와 프론트엔드(Next.js) 분리 구조
+- 외부에서 3000 포트 단일 접점 (8000 포트 미노출)
+- Next.js `rewrites`로 `/api/*` → `localhost:8000/api/*` 내부 프록시
+
+### 백엔드 구성 (web/backend/ — FastAPI)
+
+| 파일 | 역할 |
+|---|---|
+| app/main.py | FastAPI 앱, CORS 설정, 라우터 등록 |
+| app/database.py | psycopg2 ConnectionPool, fetchall_as_dict 헬퍼 |
+| routers/gpu.py | /api/gpu/latest, /history?hours=N&gpu_index=N |
+| routers/node.py | /api/node/latest, /history, /snmp/latest, /snmp/history |
+| routers/network.py | /api/network/interfaces, /latest, /history?hours=N&interface=X |
+| routers/disk.py | /api/disk/latest, /history?hours=N&mountpoint=X, /mountpoints |
+
+- DB 연결: NodePort 30432 (PostgreSQL)
+- history 엔드포인트: `hours` 파라미터로 시간 범위 지정 (서버에서 start/end 계산)
+- 실행: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
+
+### 프론트엔드 구성 (web/frontend/ — Next.js 14 + D3.js + Tailwind)
+
+#### 페이지 구성
+| 경로 | 내용 |
+|---|---|
+| / | GPU Health & Utilization (게이지, 시계열 4개) |
+| /system | 시스템 현황 (CPU/메모리 게이지, Load Average, 네트워크) |
+| /network | 인터페이스별 트래픽 In/Out/pps/에러, 전체 인터페이스 테이블 |
+| /disk | 파티션별 도넛 차트, 사용률 히스토리 |
+
+#### D3 차트 컴포넌트
+- `GaugeChart`: 반원 게이지 (0-100%, 임계값별 색상 green/amber/red), viewBox 기반 렌더링
+- `LineChart`: 다중 시계열 라인+영역 차트, viewBox 기반 렌더링 (560×height 가상 좌표)
+- `DonutChart`: 원형 도넛 사용률 차트
+
+#### 공통 UI
+- `TimeRangePicker`: 1H / 6H / 24H / 7D 선택 버튼
+- `MetricCard`: 수치 카드 (임계값 색상 표시)
+- `Sidebar`: 4개 페이지 네비게이션
+- SWR 60초 polling 자동 갱신
+
+### 트러블슈팅
+
+#### 1. 차트 렌더링 안 됨 (빈 박스)
+- **원인**: D3가 SVG의 `clientWidth`를 0으로 읽음 (DOM 레이아웃 전에 useEffect 실행)
+- **해결**: SVG에 `viewBox="0 0 560 180"` 설정, 컨테이너 크기 측정 불필요
+
+#### 2. 차트 "데이터 로딩 중..." 고착
+- **원인**: `rangeParams()`가 `new Date()`를 매 렌더마다 호출 → SWR 키가 렌더링마다 변경 → 항상 새 요청으로 인식해 이전 요청 폐기 반복
+- **해결**: 시간 범위를 `start/end` ISO 문자열 대신 `hours` 파라미터로 단순화 → SWR 키 안정화
+
+#### 3. 외부 접속 시 API connection refused
+- **원인**: `NEXT_PUBLIC_API_URL=http://220.90.209.134:8000`으로 설정 시 브라우저가 8000 포트 직접 접근 시도 → 방화벽 차단
+- **해결**: Next.js `rewrites`로 내부 프록시, `NEXT_PUBLIC_API_URL` 제거 (상대경로 `/api/*` 사용)
+
+#### 4. 메모리 단위 오류
+- **원인**: DCGM_FI_DEV_FB_USED/FREE는 bytes 단위 반환, DB 컬럼명이 `memory_used_mb`로 오해 유발
+- **해결**: 프론트엔드에서 `÷ (1024³)` 변환하여 GB 표시
+
+### 실행 방법
+```bash
+# 백엔드
+cd web/backend && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 프론트엔드
+cd web/frontend && npm run dev -- --hostname 0.0.0.0 --port 3000
+```
+
+### 접속 주소
+- 대시보드: http://220.90.209.134:3000
+- API (내부): http://localhost:8000/docs
+
+---
+
 ## [2026-03-12] 트러블슈팅: K3s 설치 시 CRI v1 runtime API 에러
 
 ### 증상
