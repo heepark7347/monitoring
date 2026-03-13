@@ -35,3 +35,12 @@ venv/
 .DS_Store
 *.swp
 *.swo
+
+# ─── 웹 프론트엔드 ───────────────────────────────────────────────────
+web/frontend/node_modules/
+web/frontend/.next/
+web/frontend/.env.local
+
+# ─── 웹 백엔드 ───────────────────────────────────────────────────────
+web/backend/.env
+web/backend/__pycache__/
