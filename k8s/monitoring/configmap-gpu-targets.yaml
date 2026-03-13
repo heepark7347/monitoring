@@ -33,3 +33,17 @@ data:
         }
       }
     ]
+
+  snmp-targets.json: |
+    [
+      {
+        "targets": [
+          "183.111.14.6"
+        ],
+        "labels": {
+          "job": "snmp-exporter",
+          "site": "remote-datacenter",
+          "node": "conb-gpu-node-1"
+        }
+      }
+    ]

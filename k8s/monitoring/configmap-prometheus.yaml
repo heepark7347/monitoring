@@ -46,11 +46,12 @@ data:
             target_label: host_ip
             replacement: '$1'
 
-      # SNMP Exporter (네트워크 장비 모니터링)
-      - job_name: 'snmp-exporter'
+      # SNMP Exporter - 네트워크 인터페이스 (if_mib)
+      - job_name: 'snmp-if-mib'
         metrics_path: /snmp
         params:
           module: [if_mib]
+          auth: [gpu_monitor_auth]
         file_sd_configs:
           - files:
               - /etc/prometheus/targets/snmp-targets.json
@@ -60,5 +61,31 @@ data:
             target_label: __param_target
           - source_labels: [__param_target]
             target_label: instance
+          - source_labels: [__address__]
+            regex: '([^:]+)(:\d+)?'
+            target_label: host_ip
+            replacement: '$1'
+          - target_label: __address__
+            replacement: snmp-exporter:9116
+
+      # SNMP Exporter - CPU / 메모리 / 디스크 / 업타임 (linux_base)
+      - job_name: 'snmp-linux-base'
+        metrics_path: /snmp
+        params:
+          module: [linux_base]
+          auth: [gpu_monitor_auth]
+        file_sd_configs:
+          - files:
+              - /etc/prometheus/targets/snmp-targets.json
+            refresh_interval: 60s
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - source_labels: [__address__]
+            regex: '([^:]+)(:\d+)?'
+            target_label: host_ip
+            replacement: '$1'
           - target_label: __address__
             replacement: snmp-exporter:9116

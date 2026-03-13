@@ -30,6 +30,144 @@
 
 ---
 
+## [2026-03-12] PostgreSQL 구축 및 Longhorn 스토리지 마이그레이션
+
+### 작업 내역
+- PostgreSQL 15-alpine StatefulSet 배포 (namespace: default)
+  - 초기 스토리지: local-path → **Longhorn으로 마이그레이션** (HA 확보)
+  - PVC: 10Gi, storageClassName: longhorn, replicas: 2 (워커 노드 2대 기준)
+  - Secret: postgres-secret (POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB)
+  - Service: NodePort 30432로 외부 접근
+- Longhorn 기본 replica 수 3 → 2로 패치 (워커 노드 수 맞춤)
+- DB 초기화: gpu_metrics, node_metrics, disk_metrics 테이블 자동 생성
+
+### 트러블슈팅
+- Longhorn volume degraded: default-replica-count=3이나 워커 2대 → replicas=2로 패치
+- hostPort 방식 시도 → Calico portmap 미지원으로 실패 → NodePort 30432로 확정
+- StatefulSet serviceName과 Service name 불일치 → postgres-db로 통일
+
+---
+
+## [2026-03-12] 원격 GPU 서버 모니터링 수집 체계 구축
+
+### 수집 대상
+- 외부 GPU 서버: 183.111.14.6 (NVIDIA A100-SXM4-40GB, MIG mode)
+- DCGM Exporter: 9400 포트 (GPU 메트릭)
+- Node Exporter: 9100 포트 (CPU / 메모리 / 디스크 / 네트워크 / 업타임)
+
+### 구성 내역
+- Prometheus (prom/prometheus:v2.51.0)
+  - scrape_interval: 30s
+  - file_sd_configs 방식으로 targets 동적 관리 (targets.json, node-targets.json)
+  - relabel: host_ip 레이블 자동 추출
+- Python Collector (python:3.11-slim)
+  - Prometheus API → PostgreSQL INSERT, 60초 주기
+  - 수집 테이블: gpu_metrics / node_metrics / disk_metrics
+- ConfigMap gpu-targets: 외부 서버 IP/포트 목록 관리
+
+### 수집 지표
+| 테이블 | 주요 지표 |
+|---|---|
+| gpu_metrics | utilization, memory_used/free, temperature, power, sm/mem clock |
+| node_metrics | cpu_pct, memory, load_1/5/15m, net_rx/tx, uptime_seconds |
+| disk_metrics | mountpoint별 total/avail/used bytes, usage_percent |
+
+### 트러블슈팅
+- Prometheus가 워커 노드에 배치되어 외부 라우팅 불가 → 시간 경과 후 자동 해소
+- collector "수집된 데이터 없음": Prometheus targets DOWN 상태였음 → UP 전환 후 정상 수집
+- SNMP로 디스크/업타임 수집 시도 → 183.111.14.6 SNMP 타임아웃 → Node Exporter로 대체 수집
+
+---
+
+## [2026-03-13] Git 연동 및 소스코드 관리 체계 수립
+
+### 작업 내역
+- GitHub 원격 저장소 연결: https://github.com/heepark7347/monitoring
+- .gitignore 설정: secret.yaml, kubeconfig, logs/, *.log 제외
+- secret.yaml.example 생성 (실제 값 없는 템플릿으로 커밋)
+- 초기 커밋 및 push 완료 (18개 파일)
+
+### 보안 처리
+- k8s/database/secret.yaml → .gitignore 제외 (Base64 인코딩된 DB 패스워드 포함)
+- k8s/database/secret.yaml.example → 커밋 포함 (빈 템플릿)
+
+---
+
+## [2026-03-13] SNMP 기반 시스템 지표 수집 아키텍처 수립
+
+### 목표
+Agentless 모니터링 체계 구축을 위해 외부 서버에 SNMP 설정을 완료하고, 클러스터에 SNMP Exporter 배포 준비
+
+### 구성 내역
+- SNMP Exporter (prom/snmp-exporter:v0.26.0) Deployment + ClusterIP Service(9116) 배포
+- snmp.yml ConfigMap 작성 (v0.24+ auths/modules 분리 형식)
+  - 인증: community `gpu-monitor`, SNMP v2c
+  - 모듈 `if_mib`: 네트워크 인터페이스 (ifOperStatus, ifSpeed, ifHCInOctets/OutOctets, 에러/드롭)
+  - 모듈 `linux_base`: CPU(User/System/Idle/Wait), 메모리(Total/Avail/Swap), Load Average(1m/5m/15m), 디스크(파티션별 Total/Avail/Used/Percent), sysUpTime
+- Prometheus scrape job 2개 추가
+  - `snmp-if-mib`: if_mib 모듈, auth=gpu_monitor_auth
+  - `snmp-linux-base`: linux_base 모듈, auth=gpu_monitor_auth
+- ConfigMap gpu-targets에 snmp-targets.json 추가 (183.111.14.6)
+
+### 전제 조건 (미완료)
+- 외부 서버(183.111.14.6)에서 snmpd 실행 및 UDP 161 포트 오픈 필요
+- community string `gpu-monitor` snmpd 설정 반영 필요
+
+### 현재 상태
+- SNMP Exporter Pod: Running (설정 파싱 정상)
+- Prometheus targets: snmpd 활성화 후 UP 전환 예정
+
+---
+
+## [2026-03-13] SNMP Exporter 배포 및 통신 문제 해결
+
+### 목표
+Agentless 모니터링 체계 구축 — 외부 서버 SNMP 수집
+
+### 배포 구성
+- SNMP Exporter (prom/snmp-exporter:v0.26.0) Deployment + ClusterIP Service (9116)
+- snmp.yml ConfigMap (v0.24+ auths/modules 분리 형식)
+  - 인증: community `gpu-monitor`, SNMP v2c → auth 이름 `gpu_monitor_auth`
+  - 모듈 `if_mib`: 네트워크 인터페이스 (ifHCInOctets/OutOctets, ifOperStatus, ifSpeed, 에러/드롭)
+  - 모듈 `linux_base`: CPU(User/System/Idle/Wait), 메모리(Total/Avail/Swap), Load Average(1m/5m/15m), 디스크(파티션별 Total/Avail/Used/Percent), sysUpTime
+- Prometheus scrape job 2개: `snmp-if-mib`, `snmp-linux-base`
+- gpu-targets ConfigMap에 `snmp-targets.json` 추가 (183.111.14.6)
+
+### 트러블슈팅 과정
+
+#### 1. snmp.yml 설정 형식 오류
+- v0.26.0에서 기존 형식(`if_mib: ... auth: community:`) → 신규 형식(`auths: / modules:`) 분리 필요
+- 모듈 내부 `auth` 필드 제거, Prometheus scrape params에 `auth: [gpu_monitor_auth]` 추가로 해결
+
+#### 2. SNMP UDP 응답 미수신 (NAT 리턴 패스 문제)
+- **증상**: snmpd는 응답 발송(tcpdump Out 확인), SNMP Exporter는 timeout
+- **원인 분석**:
+  - GPU 서버 공인 IP: 183.111.14.6 (ISP DNAT → 내부 10.10.10.2)
+  - snmpd 응답: src=10.10.10.2 → 우리 클러스터 라우터가 인식 불가
+  - conntrack 특성상 ESTABLISHED/UNTRACKED 패킷은 nat 테이블 미적용 → iptables SNAT 룰 무효
+- **시도한 방법**:
+  - GPU 서버 iptables SNAT (to-source 183.111.14.6) → conntrack 0 패킷
+  - NOTRACK + SNAT 조합 → UNTRACKED 패킷도 nat 테이블 우회
+  - 정책 라우팅(ip rule/route table 200) → 효과 없음
+  - WireGuard VPN 시도 → 우리 클러스터 라우터 포트 포워딩 없어 GPU 서버 핸드셰이크 미도달
+- **최종 해결**: GPU 서버 snmpd `rocommunity` 허용 대역 수정으로 SNMP Exporter(220.90.209.132) 정상 인증 → 응답 수신 성공
+
+#### 3. snmpd agentAddress 수정
+- 기본값 `127.0.0.1:161` → `udp:161` (0.0.0.0 수신)으로 변경
+
+### 최종 수집 확인 (183.111.14.6)
+| 모듈 | 주요 지표 |
+|---|---|
+| linux_base | CPU, 메모리, Load Average, sysUpTime, 디스크 파티션별 사용량 |
+| if_mib | 인터페이스별 송수신 바이트, 에러/드롭 카운터, 운영 상태 |
+
+### 모니터링 전략 확정
+- **GPU 서버**: DCGM Exporter(GPU) + Node Exporter(시스템) + SNMP(네트워크 인터페이스)
+- **일반 서버**: Node Exporter(시스템) + SNMP(네트워크 인터페이스)
+- **네트워크 장비**: SNMP Exporter 전용 (snmp-targets.json에 IP 추가만으로 확장)
+
+---
+
 ## [2026-03-12] 트러블슈팅: K3s 설치 시 CRI v1 runtime API 에러
 
 ### 증상
