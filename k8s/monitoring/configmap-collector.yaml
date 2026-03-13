@@ -7,8 +7,8 @@ data:
   collector.py: |
     #!/usr/bin/env python3
     """
-    GPU + Node + Disk + Uptime Metrics Collector
-    Prometheus(DCGM + Node Exporter) → PostgreSQL 주기적 수집기
+    GPU + Node + Disk + SNMP Metrics Collector
+    Prometheus(DCGM + Node Exporter + SNMP Exporter) → PostgreSQL 주기적 수집기
     수집 주기: 환경변수 COLLECT_INTERVAL_SEC (기본 60초)
     """
 
@@ -111,6 +111,46 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_disk_metrics_time ON disk_metrics(collected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_disk_metrics_host ON disk_metrics(host_ip, mountpoint);
+
+    CREATE TABLE IF NOT EXISTS snmp_interface_metrics (
+        id                      BIGSERIAL PRIMARY KEY,
+        collected_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip                 VARCHAR(50)  NOT NULL,
+        if_descr                VARCHAR(100) NOT NULL,
+        if_oper_status          SMALLINT,
+        if_speed_mbps           FLOAT,
+        if_in_octets_rate       FLOAT,
+        if_out_octets_rate      FLOAT,
+        if_in_ucast_pkts_rate   FLOAT,
+        if_out_ucast_pkts_rate  FLOAT,
+        if_in_errors_rate       FLOAT,
+        if_out_errors_rate      FLOAT,
+        if_in_discards_rate     FLOAT,
+        if_out_discards_rate    FLOAT
+    );
+    CREATE INDEX IF NOT EXISTS idx_snmp_iface_time ON snmp_interface_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_snmp_iface_host ON snmp_interface_metrics(host_ip, if_descr);
+
+    CREATE TABLE IF NOT EXISTS snmp_system_metrics (
+        id                  BIGSERIAL PRIMARY KEY,
+        collected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip             VARCHAR(50)  NOT NULL,
+        uptime_seconds      FLOAT,
+        cpu_user_pct        FLOAT,
+        cpu_system_pct      FLOAT,
+        cpu_idle_pct        FLOAT,
+        mem_total_kb        FLOAT,
+        mem_avail_kb        FLOAT,
+        mem_buffer_kb       FLOAT,
+        mem_cached_kb       FLOAT,
+        mem_swap_total_kb   FLOAT,
+        mem_swap_avail_kb   FLOAT,
+        load_1m             FLOAT,
+        load_5m             FLOAT,
+        load_15m            FLOAT
+    );
+    CREATE INDEX IF NOT EXISTS idx_snmp_sys_time ON snmp_system_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_snmp_sys_host ON snmp_system_metrics(host_ip);
     """
 
     def get_db_conn():
@@ -128,7 +168,7 @@ data:
                     with conn.cursor() as cur:
                         cur.execute(INIT_SQL)
                 conn.close()
-                log.info("DB 초기화 완료 (gpu_metrics, node_metrics, disk_metrics)")
+                log.info("DB 초기화 완료 (gpu/node/disk/snmp_interface/snmp_system)")
                 return
             except Exception as e:
                 log.warning(f"DB 연결 대기 중 ({attempt+1}/10): {e}")
@@ -154,9 +194,27 @@ data:
             log.error(f"Prometheus 쿼리 실패: {e}")
             return {}
 
+    def prom_query_iface(promql):
+        """인터페이스 단위 쿼리 → {(host_ip, if_descr): value}"""
+        try:
+            resp = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params={"query": promql}, timeout=10
+            )
+            resp.raise_for_status()
+            data = {}
+            for r in resp.json().get("data", {}).get("result", []):
+                l = r.get("metric", {})
+                host_ip  = l.get("host_ip", l.get("instance", "unknown").split(":")[0])
+                if_descr = l.get("ifDescr", "")
+                data[(host_ip, if_descr)] = float(r["value"][1])
+            return data
+        except Exception as e:
+            log.error(f"Prometheus 인터페이스 쿼리 실패 ({promql[:40]}): {e}")
+            return {}
+
     def prom_query_disk():
         """파티션별 디스크 쿼리 → {(host_ip, mountpoint): {device, fstype, total, avail}}"""
-        # tmpfs, overlay, squashfs, devtmpfs, vfat(efi) 제외, 실제 스토리지만 수집
         exclude = 'tmpfs|overlay|squashfs|devtmpfs|vfat'
         try:
             size_resp = requests.get(
@@ -171,7 +229,6 @@ data:
                 timeout=10
             ).json().get("data", {}).get("result", [])
 
-            # avail을 (host_ip, mountpoint) 키로 인덱싱
             avail_map = {}
             for r in avail_resp:
                 l = r["metric"]
@@ -317,22 +374,125 @@ data:
         conn.close()
         log.info(f"[DISK] INSERT 완료: {len(rows)}개 파티션")
 
+    # ── SNMP 인터페이스 수집 (if_mib) ────────────────────────────────
+    def collect_snmp_iface():
+        iface_queries = {
+            "if_oper_status":        "ifOperStatus",
+            "if_speed_mbps":         "ifHighSpeed",
+            "if_in_octets_rate":     "rate(ifHCInOctets[2m])",
+            "if_out_octets_rate":    "rate(ifHCOutOctets[2m])",
+            "if_in_ucast_pkts_rate": "rate(ifHCInUcastPkts[2m])",
+            "if_out_ucast_pkts_rate":"rate(ifHCOutUcastPkts[2m])",
+            "if_in_errors_rate":     "rate(ifInErrors[2m])",
+            "if_out_errors_rate":    "rate(ifOutErrors[2m])",
+            "if_in_discards_rate":   "rate(ifInDiscards[2m])",
+            "if_out_discards_rate":  "rate(ifOutDiscards[2m])",
+        }
+        collected = {}
+        for col, promql in iface_queries.items():
+            for key, val in prom_query_iface(promql).items():
+                collected.setdefault(key, {})[col] = val
+        if not collected:
+            log.warning("[SNMP_IFACE] 수집된 데이터 없음")
+            return
+        now  = datetime.now(timezone.utc)
+        rows = []
+        for (host_ip, if_descr), m in collected.items():
+            status = m.get("if_oper_status")
+            rows.append((
+                now, host_ip, if_descr,
+                int(status) if status is not None else None,
+                m.get("if_speed_mbps"),
+                m.get("if_in_octets_rate"),  m.get("if_out_octets_rate"),
+                m.get("if_in_ucast_pkts_rate"), m.get("if_out_ucast_pkts_rate"),
+                m.get("if_in_errors_rate"),  m.get("if_out_errors_rate"),
+                m.get("if_in_discards_rate"), m.get("if_out_discards_rate"),
+            ))
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO snmp_interface_metrics (
+                        collected_at, host_ip, if_descr,
+                        if_oper_status, if_speed_mbps,
+                        if_in_octets_rate, if_out_octets_rate,
+                        if_in_ucast_pkts_rate, if_out_ucast_pkts_rate,
+                        if_in_errors_rate, if_out_errors_rate,
+                        if_in_discards_rate, if_out_discards_rate
+                    ) VALUES %s
+                """, rows)
+        conn.close()
+        log.info(f"[SNMP_IFACE] INSERT 완료: {len(rows)}개 인터페이스")
+
+    # ── SNMP 시스템 수집 (linux_base) ────────────────────────────────
+    def collect_snmp_system():
+        sys_queries = {
+            "uptime_seconds":   "sysUpTime / 100",
+            "cpu_user_pct":     "ssCpuUser",
+            "cpu_system_pct":   "ssCpuSystem",
+            "cpu_idle_pct":     "ssCpuIdle",
+            "mem_total_kb":     "memTotalReal",
+            "mem_avail_kb":     "memAvailReal",
+            "mem_buffer_kb":    "memBuffer",
+            "mem_cached_kb":    "memCached",
+            "mem_swap_total_kb":"memTotalSwap",
+            "mem_swap_avail_kb":"memAvailSwap",
+        }
+        collected = {}
+        for col, promql in sys_queries.items():
+            for host_ip, val in prom_query(promql).items():
+                collected.setdefault(host_ip, {})[col] = val
+        # Load Average (laNames 레이블로 1m/5m/15m 구분)
+        for la_name, col in [("Load-1", "load_1m"), ("Load-5", "load_5m"), ("Load-15", "load_15m")]:
+            for host_ip, val in prom_query(f'laLoad{{laNames="{la_name}"}}').items():
+                collected.setdefault(host_ip, {})[col] = val
+        if not collected:
+            log.warning("[SNMP_SYS] 수집된 데이터 없음")
+            return
+        now  = datetime.now(timezone.utc)
+        rows = [
+            (
+                now, host_ip,
+                m.get("uptime_seconds"),
+                m.get("cpu_user_pct"), m.get("cpu_system_pct"), m.get("cpu_idle_pct"),
+                m.get("mem_total_kb"), m.get("mem_avail_kb"),
+                m.get("mem_buffer_kb"), m.get("mem_cached_kb"),
+                m.get("mem_swap_total_kb"), m.get("mem_swap_avail_kb"),
+                m.get("load_1m"), m.get("load_5m"), m.get("load_15m"),
+            )
+            for host_ip, m in collected.items()
+        ]
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO snmp_system_metrics (
+                        collected_at, host_ip,
+                        uptime_seconds,
+                        cpu_user_pct, cpu_system_pct, cpu_idle_pct,
+                        mem_total_kb, mem_avail_kb, mem_buffer_kb, mem_cached_kb,
+                        mem_swap_total_kb, mem_swap_avail_kb,
+                        load_1m, load_5m, load_15m
+                    ) VALUES %s
+                """, rows)
+        conn.close()
+        log.info(f"[SNMP_SYS] INSERT 완료: {len(rows)}개 호스트")
+
     def main():
         log.info(f"Collector 시작 | Prometheus={PROMETHEUS_URL} | 주기={COLLECT_INTERVAL}s")
         init_db()
         while True:
-            try:
-                collect_gpu()
-            except Exception as e:
-                log.error(f"[GPU] 수집 오류: {e}")
-            try:
-                collect_node()
-            except Exception as e:
-                log.error(f"[NODE] 수집 오류: {e}")
-            try:
-                collect_disk()
-            except Exception as e:
-                log.error(f"[DISK] 수집 오류: {e}")
+            for name, fn in [
+                ("GPU",        collect_gpu),
+                ("NODE",       collect_node),
+                ("DISK",       collect_disk),
+                ("SNMP_IFACE", collect_snmp_iface),
+                ("SNMP_SYS",   collect_snmp_system),
+            ]:
+                try:
+                    fn()
+                except Exception as e:
+                    log.error(f"[{name}] 수집 오류: {e}")
             time.sleep(COLLECT_INTERVAL)
 
     if __name__ == "__main__":

@@ -168,6 +168,55 @@ Agentless 모니터링 체계 구축 — 외부 서버 SNMP 수집
 
 ---
 
+## [2026-03-13] SNMP 메트릭 OID 확장 및 PostgreSQL 저장 체계 구축
+
+### 목표
+SNMP로 수집되는 지표를 Prometheus TSDB에만 보관하던 것에서 PostgreSQL 장기 보존 체계로 전환
+
+### OID 확장 (configmap-snmp.yaml)
+
+#### if_mib 모듈 추가 OID
+| 메트릭 | OID | 설명 |
+|---|---|---|
+| ifHighSpeed | 1.3.6.1.2.1.31.1.1.1.15 | 인터페이스 속도 (Mbps, 1G 이상) |
+| ifHCInUcastPkts | 1.3.6.1.2.1.31.1.1.1.7 | 수신 유니캐스트 패킷 수 (64-bit) |
+| ifHCOutUcastPkts | 1.3.6.1.2.1.31.1.1.1.11 | 송신 유니캐스트 패킷 수 (64-bit) |
+
+#### linux_base 모듈 추가 OID
+| 메트릭 | OID | 설명 |
+|---|---|---|
+| ssCpuRawUser | 1.3.6.1.4.1.2021.11.50.0 | CPU 사용자 누적 틱 (counter, rate() 계산용) |
+| ssCpuRawSystem | 1.3.6.1.4.1.2021.11.52.0 | CPU 커널 누적 틱 |
+| ssCpuRawIdle | 1.3.6.1.4.1.2021.11.53.0 | CPU 유휴 누적 틱 |
+| ssCpuRawWait | 1.3.6.1.4.1.2021.11.54.0 | I/O 대기 누적 틱 (기존 gauge 오류 수정 → counter) |
+| memBuffer | 1.3.6.1.4.1.2021.4.14.0 | 버퍼 메모리 (KB) |
+| memCached | 1.3.6.1.4.1.2021.4.15.0 | 캐시 메모리 (KB) |
+| memShared | 1.3.6.1.4.1.2021.4.13.0 | 공유 메모리 (KB) |
+
+### 신규 DB 테이블 (configmap-collector.yaml)
+
+#### snmp_interface_metrics
+인터페이스별 트래픽/에러/드롭 수집 (60초 주기)
+- 주요 컬럼: if_descr, if_oper_status, if_speed_mbps, in/out_octets_rate(B/s), in/out_ucast_pkts_rate(pps), in/out_errors_rate, in/out_discards_rate
+
+#### snmp_system_metrics
+호스트별 CPU/메모리/부하/업타임 수집 (60초 주기)
+- 주요 컬럼: uptime_seconds, cpu_user/system/idle_pct, mem_total/avail/buffer/cached_kb, swap_total/avail_kb, load_1m/5m/15m
+
+### Python Collector 확장
+- `collect_snmp_iface()`: Prometheus에서 ifHCInOctets rate, ifHCOutOctets rate 등 10개 쿼리 → snmp_interface_metrics INSERT
+- `collect_snmp_system()`: ssCpuUser, memTotalReal, laLoad 등 13개 쿼리 → snmp_system_metrics INSERT
+- `prom_query_iface()`: (host_ip, ifDescr) 키 기반 인터페이스 단위 쿼리 헬퍼 추가
+
+### 수집 확인 (183.111.14.6)
+- snmp_interface_metrics: 14개 인터페이스 (up 상태) 정상 수집
+  - ens10f0(물리 NIC): 수신 0.22 kB/s, 송신 1.65 kB/s
+  - cni0(K8s CNI bridge): 수신 3.11 kB/s, 송신 2.44 kB/s
+  - 에러/드롭 모두 0
+- snmp_system_metrics: CPU idle 98%, 메모리 가용 113.7GB/125.5GB, Load 0
+
+---
+
 ## [2026-03-12] 트러블슈팅: K3s 설치 시 CRI v1 runtime API 에러
 
 ### 증상

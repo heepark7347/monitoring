@@ -6,7 +6,6 @@ metadata:
 data:
   snmp.yml: |
     # ── 인증 설정 (v0.24+ 분리 형식) ────────────────────────────────────
-    # auth는 모듈 내부가 아닌 Prometheus scrape params로 참조
     auths:
       gpu_monitor_auth:
         community: gpu-monitor
@@ -18,8 +17,8 @@ data:
       # ── if_mib : 네트워크 인터페이스 ──────────────────────────────────
       if_mib:
         walk:
-          - 1.3.6.1.2.1.2.2        # ifTable
-          - 1.3.6.1.2.1.31.1.1     # ifXTable (64-bit counters)
+          - 1.3.6.1.2.1.2.2        # ifTable (32-bit)
+          - 1.3.6.1.2.1.31.1.1     # ifXTable (64-bit counters + highSpeed)
         metrics:
           - name: ifOperStatus
             oid: 1.3.6.1.2.1.2.2.1.8
@@ -38,10 +37,10 @@ data:
                 oid: 1.3.6.1.2.1.31.1.1.1.18
                 type: DisplayString
 
-          - name: ifSpeed
-            oid: 1.3.6.1.2.1.2.2.1.5
+          - name: ifHighSpeed
+            oid: 1.3.6.1.2.1.31.1.1.1.15
             type: gauge
-            help: "인터페이스 대역폭 (bps)"
+            help: "인터페이스 속도 (Mbps, 1G 이상 인터페이스용)"
             indexes:
               - labelname: ifIndex
                 type: gauge
@@ -54,7 +53,7 @@ data:
           - name: ifHCInOctets
             oid: 1.3.6.1.2.1.31.1.1.1.6
             type: counter
-            help: "수신 바이트 수 (64-bit)"
+            help: "수신 바이트 수 (64-bit 누적)"
             indexes:
               - labelname: ifIndex
                 type: gauge
@@ -67,7 +66,33 @@ data:
           - name: ifHCOutOctets
             oid: 1.3.6.1.2.1.31.1.1.1.10
             type: counter
-            help: "송신 바이트 수 (64-bit)"
+            help: "송신 바이트 수 (64-bit 누적)"
+            indexes:
+              - labelname: ifIndex
+                type: gauge
+            lookups:
+              - labels: [ifIndex]
+                labelname: ifDescr
+                oid: 1.3.6.1.2.1.2.2.1.2
+                type: DisplayString
+
+          - name: ifHCInUcastPkts
+            oid: 1.3.6.1.2.1.31.1.1.1.7
+            type: counter
+            help: "수신 유니캐스트 패킷 수 (64-bit 누적)"
+            indexes:
+              - labelname: ifIndex
+                type: gauge
+            lookups:
+              - labels: [ifIndex]
+                labelname: ifDescr
+                oid: 1.3.6.1.2.1.2.2.1.2
+                type: DisplayString
+
+          - name: ifHCOutUcastPkts
+            oid: 1.3.6.1.2.1.31.1.1.1.11
+            type: counter
+            help: "송신 유니캐스트 패킷 수 (64-bit 누적)"
             indexes:
               - labelname: ifIndex
                 type: gauge
@@ -134,15 +159,16 @@ data:
         walk:
           - 1.3.6.1.2.1.1.3        # sysUpTime
           - 1.3.6.1.4.1.2021.10    # laTable (Load Average)
-          - 1.3.6.1.4.1.2021.11    # systemStats (CPU)
+          - 1.3.6.1.4.1.2021.11    # systemStats (CPU gauge % + raw counters)
           - 1.3.6.1.4.1.2021.4     # memory (UCD-SNMP-MIB)
-          - 1.3.6.1.4.1.2021.9     # dskTable (Disk)
+          - 1.3.6.1.4.1.2021.9     # dskTable (Disk, snmpd에 disk 지시자 필요)
         metrics:
           - name: sysUpTime
             oid: 1.3.6.1.2.1.1.3.0
             type: gauge
-            help: "시스템 업타임 (1/100초 단위)"
+            help: "시스템 업타임 (1/100초 단위 ticks, /100 = 초)"
 
+          # ── CPU 사용률 (gauge %, 즉시값) ─────────────────────────────
           - name: ssCpuUser
             oid: 1.3.6.1.4.1.2021.11.9.0
             type: gauge
@@ -158,11 +184,28 @@ data:
             type: gauge
             help: "CPU 유휴율 (%)"
 
-          - name: ssCpuWait
-            oid: 1.3.6.1.4.1.2021.11.54.0
-            type: gauge
-            help: "I/O 대기 CPU 사용률 (%)"
+          # ── CPU Raw 카운터 (rate() 기반 정밀 계산용) ────────────────
+          - name: ssCpuRawUser
+            oid: 1.3.6.1.4.1.2021.11.50.0
+            type: counter
+            help: "사용자 영역 CPU 누적 틱 (rate()로 % 계산 가능)"
 
+          - name: ssCpuRawSystem
+            oid: 1.3.6.1.4.1.2021.11.52.0
+            type: counter
+            help: "커널 영역 CPU 누적 틱"
+
+          - name: ssCpuRawIdle
+            oid: 1.3.6.1.4.1.2021.11.53.0
+            type: counter
+            help: "CPU 유휴 누적 틱"
+
+          - name: ssCpuRawWait
+            oid: 1.3.6.1.4.1.2021.11.54.0
+            type: counter
+            help: "I/O 대기 CPU 누적 틱"
+
+          # ── 메모리 (KB 단위) ─────────────────────────────────────────
           - name: memTotalReal
             oid: 1.3.6.1.4.1.2021.4.5.0
             type: gauge
@@ -172,6 +215,21 @@ data:
             oid: 1.3.6.1.4.1.2021.4.6.0
             type: gauge
             help: "사용 가능한 물리 메모리 (KB)"
+
+          - name: memBuffer
+            oid: 1.3.6.1.4.1.2021.4.14.0
+            type: gauge
+            help: "버퍼 메모리 (KB)"
+
+          - name: memCached
+            oid: 1.3.6.1.4.1.2021.4.15.0
+            type: gauge
+            help: "캐시 메모리 (KB)"
+
+          - name: memShared
+            oid: 1.3.6.1.4.1.2021.4.13.0
+            type: gauge
+            help: "공유 메모리 (KB)"
 
           - name: memTotalSwap
             oid: 1.3.6.1.4.1.2021.4.3.0
@@ -183,6 +241,7 @@ data:
             type: gauge
             help: "사용 가능한 스왑 메모리 (KB)"
 
+          # ── Load Average ─────────────────────────────────────────────
           - name: laLoad
             oid: 1.3.6.1.4.1.2021.10.1.3
             type: gauge
@@ -196,6 +255,7 @@ data:
                 oid: 1.3.6.1.4.1.2021.10.1.2
                 type: DisplayString
 
+          # ── 디스크 파티션 (snmpd.conf에 disk / 지시자 필요) ──────────
           - name: dskTotal
             oid: 1.3.6.1.4.1.2021.9.1.6
             type: gauge
