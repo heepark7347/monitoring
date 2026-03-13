@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-collector
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-collector
+  template:
+    metadata:
+      labels:
+        app: gpu-collector
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      initContainers:
+        # 필요 패키지 설치
+        - name: install-deps
+          image: python:3.11-slim
+          command:
+            - sh
+            - -c
+            - pip install requests psycopg2-binary --quiet --target /deps
+          volumeMounts:
+            - name: deps
+              mountPath: /deps
+      containers:
+        - name: collector
+          image: python:3.11-slim
+          command:
+            - python
+            - /app/collector.py
+          env:
+            - name: PYTHONPATH
+              value: /deps
+            - name: PROMETHEUS_URL
+              value: "http://prometheus:9090"
+            - name: DB_HOST
+              value: "postgres-db"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "gpu_monitoring"
+            - name: COLLECT_INTERVAL_SEC
+              value: "60"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: script
+              mountPath: /app
+            - name: deps
+              mountPath: /deps
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: script
+          configMap:
+            name: collector-script
+        - name: deps
+          emptyDir: {}

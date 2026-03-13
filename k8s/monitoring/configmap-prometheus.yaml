@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: default
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+      external_labels:
+        monitor: 'gpu-remote-monitor'
+
+    scrape_configs:
+      # 외부 GPU 서버 DCGM Exporter 수집 (9400 포트)
+      - job_name: 'dcgm-exporter'
+        metrics_path: /metrics
+        scheme: http
+        file_sd_configs:
+          - files:
+              - /etc/prometheus/targets/targets.json
+            refresh_interval: 30s
+        relabel_configs:
+          # 인스턴스 레이블을 IP:PORT 그대로 유지
+          - source_labels: [__address__]
+            target_label: instance
+          # host_ip 레이블 추출 (포트 제거)
+          - source_labels: [__address__]
+            regex: '([^:]+):\d+'
+            target_label: host_ip
+            replacement: '$1'
+
+      # Node Exporter (외부 GPU 서버 CPU/RAM/디스크 수집)
+      - job_name: 'node-exporter'
+        metrics_path: /metrics
+        scheme: http
+        file_sd_configs:
+          - files:
+              - /etc/prometheus/targets/node-targets.json
+            refresh_interval: 30s
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: instance
+          - source_labels: [__address__]
+            regex: '([^:]+):\d+'
+            target_label: host_ip
+            replacement: '$1'
+
+      # SNMP Exporter (네트워크 장비 모니터링)
+      - job_name: 'snmp-exporter'
+        metrics_path: /snmp
+        params:
+          module: [if_mib]
+        file_sd_configs:
+          - files:
+              - /etc/prometheus/targets/snmp-targets.json
+            refresh_interval: 60s
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: snmp-exporter:9116

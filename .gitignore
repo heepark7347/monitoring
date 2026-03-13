@@ -1,0 +1,37 @@
+# ─── Kubernetes 민감 파일 ───────────────────────────────────────────
+# Secret 실제 값 포함 (Base64 인코딩된 패스워드)
+k8s/database/secret.yaml
+
+# kubeconfig (클러스터 접근 토큰/인증서 포함)
+kubeconfig
+*.kubeconfig
+.kube/
+admin.conf
+
+# join 토큰 (kubeadm join 명령에 포함된 부트스트랩 토큰)
+k8s/scripts/join-command.txt
+join-command*
+
+# ─── 환경변수 / 설정 파일 ────────────────────────────────────────────
+.env
+.env.*
+*.env
+secrets.yaml
+secrets.yml
+
+# ─── 로그 ────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# ─── 기타 ────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo

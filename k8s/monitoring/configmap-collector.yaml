@@ -1,0 +1,339 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-script
+  namespace: default
+data:
+  collector.py: |
+    #!/usr/bin/env python3
+    """
+    GPU + Node + Disk + Uptime Metrics Collector
+    Prometheus(DCGM + Node Exporter) → PostgreSQL 주기적 수집기
+    수집 주기: 환경변수 COLLECT_INTERVAL_SEC (기본 60초)
+    """
+
+    import os
+    import time
+    import logging
+    import requests
+    import psycopg2
+    from psycopg2.extras import execute_values
+    from datetime import datetime, timezone
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s"
+    )
+    log = logging.getLogger(__name__)
+
+    # ── 환경변수 설정 ─────────────────────────────────────────────────
+    PROMETHEUS_URL   = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+    DB_HOST          = os.getenv("DB_HOST", "postgres-db")
+    DB_PORT          = int(os.getenv("DB_PORT", "5432"))
+    DB_NAME          = os.getenv("DB_NAME", "gpu_monitoring")
+    DB_USER          = os.getenv("DB_USER", "admin")
+    DB_PASSWORD      = os.getenv("DB_PASSWORD", "gpu-monitor-pw")
+    COLLECT_INTERVAL = int(os.getenv("COLLECT_INTERVAL_SEC", "60"))
+
+    # ── DCGM 메트릭 정의 ──────────────────────────────────────────────
+    GPU_METRICS = {
+        "gpu_utilization":    "DCGM_FI_DEV_GPU_UTIL",
+        "memory_used_mb":     "DCGM_FI_DEV_FB_USED",
+        "memory_free_mb":     "DCGM_FI_DEV_FB_FREE",
+        "temperature_celsius":"DCGM_FI_DEV_GPU_TEMP",
+        "power_usage_watts":  "DCGM_FI_DEV_POWER_USAGE",
+        "sm_clock_mhz":       "DCGM_FI_DEV_SM_CLOCK",
+        "mem_clock_mhz":      "DCGM_FI_DEV_MEM_CLOCK",
+    }
+
+    # ── Node Exporter 메트릭 정의 (host 단위) ────────────────────────
+    NODE_METRICS = {
+        "cpu_usage_percent":      '100 - (avg by (host_ip) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100)',
+        "memory_total_bytes":     "node_memory_MemTotal_bytes",
+        "memory_available_bytes": "node_memory_MemAvailable_bytes",
+        "load_1m":                "node_load1",
+        "load_5m":                "node_load5",
+        "load_15m":               "node_load15",
+        "net_receive_bytes":      'sum by (host_ip) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|cali.*|tunl.*"}[2m]))',
+        "net_transmit_bytes":     'sum by (host_ip) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|cali.*|tunl.*"}[2m]))',
+        "uptime_seconds":         "time() - node_boot_time_seconds",
+    }
+
+    # ── DB 초기화 ─────────────────────────────────────────────────────
+    INIT_SQL = """
+    CREATE TABLE IF NOT EXISTS gpu_metrics (
+        id                  BIGSERIAL PRIMARY KEY,
+        collected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip             VARCHAR(50)  NOT NULL,
+        gpu_index           INTEGER      NOT NULL,
+        gpu_uuid            VARCHAR(100),
+        model_name          VARCHAR(100),
+        gpu_utilization     FLOAT,
+        memory_used_mb      FLOAT,
+        memory_free_mb      FLOAT,
+        temperature_celsius FLOAT,
+        power_usage_watts   FLOAT,
+        sm_clock_mhz        FLOAT,
+        mem_clock_mhz       FLOAT
+    );
+    CREATE INDEX IF NOT EXISTS idx_gpu_metrics_time ON gpu_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_gpu_metrics_host ON gpu_metrics(host_ip, gpu_index);
+
+    CREATE TABLE IF NOT EXISTS node_metrics (
+        id                      BIGSERIAL PRIMARY KEY,
+        collected_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip                 VARCHAR(50)  NOT NULL,
+        cpu_usage_percent       FLOAT,
+        memory_total_bytes      FLOAT,
+        memory_available_bytes  FLOAT,
+        memory_usage_percent    FLOAT,
+        load_1m                 FLOAT,
+        load_5m                 FLOAT,
+        load_15m                FLOAT,
+        net_receive_bytes       FLOAT,
+        net_transmit_bytes      FLOAT,
+        uptime_seconds          FLOAT
+    );
+    CREATE INDEX IF NOT EXISTS idx_node_metrics_time ON node_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_node_metrics_host ON node_metrics(host_ip);
+    ALTER TABLE node_metrics ADD COLUMN IF NOT EXISTS uptime_seconds FLOAT;
+
+    CREATE TABLE IF NOT EXISTS disk_metrics (
+        id                  BIGSERIAL PRIMARY KEY,
+        collected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip             VARCHAR(50)  NOT NULL,
+        mountpoint          VARCHAR(255) NOT NULL,
+        device              VARCHAR(255),
+        fstype              VARCHAR(50),
+        total_bytes         FLOAT,
+        avail_bytes         FLOAT,
+        usage_percent       FLOAT
+    );
+    CREATE INDEX IF NOT EXISTS idx_disk_metrics_time ON disk_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_disk_metrics_host ON disk_metrics(host_ip, mountpoint);
+    """
+
+    def get_db_conn():
+        return psycopg2.connect(
+            host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+            user=DB_USER, password=DB_PASSWORD,
+            connect_timeout=10
+        )
+
+    def init_db():
+        for attempt in range(10):
+            try:
+                conn = get_db_conn()
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(INIT_SQL)
+                conn.close()
+                log.info("DB 초기화 완료 (gpu_metrics, node_metrics, disk_metrics)")
+                return
+            except Exception as e:
+                log.warning(f"DB 연결 대기 중 ({attempt+1}/10): {e}")
+                time.sleep(6)
+        raise RuntimeError("DB 초기화 실패")
+
+    def prom_query(promql):
+        """host 단위 쿼리 → {host_ip: value}"""
+        try:
+            resp = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params={"query": promql}, timeout=10
+            )
+            resp.raise_for_status()
+            data = {}
+            for r in resp.json().get("data", {}).get("result", []):
+                labels  = r.get("metric", {})
+                host_ip = labels.get("host_ip",
+                          labels.get("instance", "unknown").split(":")[0])
+                data[host_ip] = float(r["value"][1])
+            return data
+        except Exception as e:
+            log.error(f"Prometheus 쿼리 실패: {e}")
+            return {}
+
+    def prom_query_disk():
+        """파티션별 디스크 쿼리 → {(host_ip, mountpoint): {device, fstype, total, avail}}"""
+        # tmpfs, overlay, squashfs, devtmpfs, vfat(efi) 제외, 실제 스토리지만 수집
+        exclude = 'tmpfs|overlay|squashfs|devtmpfs|vfat'
+        try:
+            size_resp = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params={"query": f'node_filesystem_size_bytes{{fstype!~"{exclude}"}}'},
+                timeout=10
+            ).json().get("data", {}).get("result", [])
+
+            avail_resp = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params={"query": f'node_filesystem_avail_bytes{{fstype!~"{exclude}"}}'},
+                timeout=10
+            ).json().get("data", {}).get("result", [])
+
+            # avail을 (host_ip, mountpoint) 키로 인덱싱
+            avail_map = {}
+            for r in avail_resp:
+                l = r["metric"]
+                host_ip = l.get("host_ip", l.get("instance","?").split(":")[0])
+                avail_map[(host_ip, l.get("mountpoint",""))] = float(r["value"][1])
+
+            data = {}
+            for r in size_resp:
+                l = r["metric"]
+                host_ip    = l.get("host_ip", l.get("instance","?").split(":")[0])
+                mountpoint = l.get("mountpoint", "")
+                total      = float(r["value"][1])
+                avail      = avail_map.get((host_ip, mountpoint), 0)
+                data[(host_ip, mountpoint)] = {
+                    "device": l.get("device", ""),
+                    "fstype": l.get("fstype", ""),
+                    "total":  total,
+                    "avail":  avail,
+                }
+            return data
+        except Exception as e:
+            log.error(f"디스크 쿼리 실패: {e}")
+            return {}
+
+    def prom_query_gpu(metric_name):
+        """DCGM 쿼리 → {(host_ip, gpu_index, uuid, model): value}"""
+        try:
+            resp = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params={"query": metric_name}, timeout=10
+            )
+            resp.raise_for_status()
+            data = {}
+            for r in resp.json().get("data", {}).get("result", []):
+                l = r.get("metric", {})
+                host_ip   = l.get("host_ip", l.get("instance","?").split(":")[0])
+                gpu_index = int(l.get("gpu", l.get("GPU", 0)))
+                gpu_uuid  = l.get("UUID", l.get("uuid", ""))
+                model     = l.get("modelName", l.get("model", ""))
+                data[(host_ip, gpu_index, gpu_uuid, model)] = float(r["value"][1])
+            return data
+        except Exception as e:
+            log.error(f"GPU 쿼리 실패 ({metric_name}): {e}")
+            return {}
+
+    # ── GPU 수집 ──────────────────────────────────────────────────────
+    def collect_gpu():
+        collected = {}
+        for col, metric in GPU_METRICS.items():
+            for key, val in prom_query_gpu(metric).items():
+                collected.setdefault(key, {})[col] = val
+        if not collected:
+            log.warning("[GPU] 수집된 데이터 없음")
+            return
+        now  = datetime.now(timezone.utc)
+        rows = [
+            (now, h, gi, gu, mo,
+             m.get("gpu_utilization"), m.get("memory_used_mb"), m.get("memory_free_mb"),
+             m.get("temperature_celsius"), m.get("power_usage_watts"),
+             m.get("sm_clock_mhz"), m.get("mem_clock_mhz"))
+            for (h, gi, gu, mo), m in collected.items()
+        ]
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO gpu_metrics (
+                        collected_at, host_ip, gpu_index, gpu_uuid, model_name,
+                        gpu_utilization, memory_used_mb, memory_free_mb,
+                        temperature_celsius, power_usage_watts, sm_clock_mhz, mem_clock_mhz
+                    ) VALUES %s
+                """, rows)
+        conn.close()
+        log.info(f"[GPU] INSERT 완료: {len(rows)}개")
+
+    # ── Node 수집 (CPU/RAM/네트워크/업타임) ──────────────────────────
+    def collect_node():
+        collected = {}
+        for col, promql in NODE_METRICS.items():
+            for host_ip, val in prom_query(promql).items():
+                collected.setdefault(host_ip, {})[col] = val
+        if not collected:
+            log.warning("[NODE] 수집된 데이터 없음")
+            return
+        now  = datetime.now(timezone.utc)
+        rows = []
+        for host_ip, m in collected.items():
+            mem_total = m.get("memory_total_bytes")
+            mem_avail = m.get("memory_available_bytes")
+            mem_pct   = round((1 - mem_avail / mem_total) * 100, 2) \
+                        if mem_total and mem_avail else None
+            rows.append((
+                now, host_ip,
+                m.get("cpu_usage_percent"),
+                mem_total, mem_avail, mem_pct,
+                m.get("load_1m"), m.get("load_5m"), m.get("load_15m"),
+                m.get("net_receive_bytes"), m.get("net_transmit_bytes"),
+                m.get("uptime_seconds"),
+            ))
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO node_metrics (
+                        collected_at, host_ip,
+                        cpu_usage_percent,
+                        memory_total_bytes, memory_available_bytes, memory_usage_percent,
+                        load_1m, load_5m, load_15m,
+                        net_receive_bytes, net_transmit_bytes,
+                        uptime_seconds
+                    ) VALUES %s
+                """, rows)
+        conn.close()
+        log.info(f"[NODE] INSERT 완료: {len(rows)}개")
+
+    # ── Disk 수집 (파티션별) ──────────────────────────────────────────
+    def collect_disk():
+        data = prom_query_disk()
+        if not data:
+            log.warning("[DISK] 수집된 데이터 없음")
+            return
+        now  = datetime.now(timezone.utc)
+        rows = []
+        for (host_ip, mountpoint), d in data.items():
+            total = d["total"]
+            avail = d["avail"]
+            usage_pct = round((1 - avail / total) * 100, 2) if total else None
+            rows.append((
+                now, host_ip, mountpoint,
+                d["device"], d["fstype"],
+                total, avail, usage_pct,
+            ))
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO disk_metrics (
+                        collected_at, host_ip, mountpoint,
+                        device, fstype,
+                        total_bytes, avail_bytes, usage_percent
+                    ) VALUES %s
+                """, rows)
+        conn.close()
+        log.info(f"[DISK] INSERT 완료: {len(rows)}개 파티션")
+
+    def main():
+        log.info(f"Collector 시작 | Prometheus={PROMETHEUS_URL} | 주기={COLLECT_INTERVAL}s")
+        init_db()
+        while True:
+            try:
+                collect_gpu()
+            except Exception as e:
+                log.error(f"[GPU] 수집 오류: {e}")
+            try:
+                collect_node()
+            except Exception as e:
+                log.error(f"[NODE] 수집 오류: {e}")
+            try:
+                collect_disk()
+            except Exception as e:
+                log.error(f"[DISK] 수집 오류: {e}")
+            time.sleep(COLLECT_INTERVAL)
+
+    if __name__ == "__main__":
+        main()
