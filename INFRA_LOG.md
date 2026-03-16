@@ -299,6 +299,101 @@ cd web/frontend && npm run dev -- --hostname 0.0.0.0 --port 3000
 
 ---
 
+## [2026-03-16] GPU XID/ECC 오류 메트릭 수집 추가
+
+### 목표
+GPU 하드웨어 오류 이벤트(XID, ECC) 감지 및 대시보드 경고 표시
+
+### 수집 메트릭 추가 (configmap-collector.yaml)
+
+| 컬럼 | DCGM 메트릭 | 설명 |
+|---|---|---|
+| xid_errors | DCGM_FI_DEV_XID_ERRORS | XID 오류 카운트 (0 초과 시 심각) |
+| ecc_sbe | DCGM_FI_DEV_ECC_SBE_VOL_TOTAL | ECC Single-bit Error |
+| ecc_dbe | DCGM_FI_DEV_ECC_DBE_VOL_TOTAL | ECC Double-bit Error (메모리 교체 권고) |
+| pcie_replay | DCGM_FI_DEV_PCIE_REPLAY_COUNTER | PCIe 재전송 카운터 |
+| power_violation | DCGM_FI_DEV_POWER_VIOLATION | 전력 제한 위반 |
+| thermal_violation | DCGM_FI_DEV_THERMAL_VIOLATION | 온도 제한 위반 |
+
+- gpu_metrics 테이블에 6개 컬럼 추가 (ALTER TABLE IF NOT EXISTS)
+- GPU 대시보드 상단 빨간 경고 배너 (XID > 0 또는 ECC DBE > 0 시 노출)
+- GPU Health Status 카드: XID / ECC SBE·DBE / PCIe Replay 상태 표시 (정상=초록, 이상=빨강)
+
+---
+
+## [2026-03-16] CONB Monitoring 다중 장비 관리 및 대시보드 전면 개편
+
+### 목표
+단일 서버 모니터링에서 고객사별 다중 장비 관리 체계로 확장
+
+### 브랜딩 변경
+- 서비스명: GPU Monitoring Dashboard → **CONB Monitoring**
+- 사이드바 헤더: MONITOR → CONB / Infra Dashboard → Monitoring Dashboard
+
+---
+
+### 백엔드 신규 API
+
+#### 센서 상태 집계 (`/api/dashboard/summary`)
+- GPU / Disk / Network / Node 최신 데이터 조회 후 임계치 기반 상태 판정
+
+| 센서 | Warning 임계치 | Down 임계치 |
+|---|---|---|
+| GPU | Temp ≥ 80°C / Util ≥ 90% / ECC SBE > 0 | XID > 0 / ECC DBE > 0 |
+| Disk | 사용률 ≥ 85% | 사용률 ≥ 95% |
+| Network | Error rate > 0.1 pps | if_oper_status ≠ 1 |
+| Node | CPU/MEM ≥ 80% | CPU/MEM ≥ 95% |
+
+- 센서 일시정지(PAUSE) 상태 지원 (`sensor_pauses` 테이블)
+- 등록된 장비 + 활성화된 센서만 집계
+
+#### 장비/센서 관리 (`/api/settings/*`)
+- `GET  /api/settings/devices` — 등록 장비 목록
+- `POST /api/settings/devices` — 장비 등록 (DB 수집 데이터 없으면 거부)
+- `PATCH /api/settings/devices/{host_ip}` — 장비명 수정
+- `DELETE /api/settings/devices/{host_ip}` — 장비 삭제
+- `GET  /api/settings/sensors?host_ip=` — 센서 목록
+- `PATCH /api/settings/sensors/{id}` — 센서 활성화 토글 / 이름 수정
+- `POST /api/settings/sensors/discover/{host_ip}` — 센서 자동 발견
+
+#### 신규 DB 테이블
+| 테이블 | 설명 |
+|---|---|
+| sensor_pauses | 일시정지 센서 키 저장 |
+| registered_devices | 등록 장비 (host_ip, display_name) |
+| sensor_configs | 센서별 활성화 여부 (host_ip, sensor_type, sensor_name, enabled) |
+
+- 서버 시작 시 `183.111.14.6` 자동 등록 및 25개 센서 자동 발견 (최초 1회)
+
+---
+
+### 프론트엔드 페이지 구성
+
+| 경로 | 내용 |
+|---|---|
+| /dashboard | 다중 세그먼트 도넛 차트 + 상태 카드 4개 (UP/Down/Warning/Pause) |
+| /devices | 등록 장비 카드 목록, 최악 상태 및 DOWN/WARN 배지 |
+| /devices/[host] | 장비 상세 — GPU / System / Network / Disk 탭 |
+| /alerts | 상태 탭(UP/DOWN/WARNING/PAUSE) + 종류별(GPU/System/Network/Disk) 센서 목록, 일시정지 버튼 |
+| /gpu | GPU 상세 (기존 / 경로에서 이동) |
+| /settings | 장비 등록/삭제, 장비명 인라인 편집, 센서 ON/OFF 토글 |
+
+#### 신규 컴포넌트
+- `SensorStatusDonut`: 다중 세그먼트 D3 도넛 차트 (UP/Down/Warning/Pause 비율)
+
+---
+
+### 동작 방식
+1. 데이터 수집은 모든 host_ip에 대해 계속 진행
+2. 페이지에 노출되는 장비·센서는 Settings에서 사용자가 등록/활성화한 것만 표시
+3. 장비 등록 시 DB에 해당 IP의 수집 데이터가 존재해야 함
+4. `183.111.14.6`은 기본 등록 장비로 사전 등록 (삭제 불가, 수정만 가능)
+
+### Git 커밋
+- `2365564` feat: CONB Monitoring 다중 장비 관리 및 대시보드 개편 (18 files, +1551/-172)
+
+---
+
 ## [2026-03-12] 트러블슈팅: K3s 설치 시 CRI v1 runtime API 에러
 
 ### 증상
