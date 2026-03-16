@@ -11,6 +11,12 @@ export interface GpuLatest {
   power_usage_watts: number | null
   sm_clock_mhz: number | null
   mem_clock_mhz: number | null
+  xid_errors: number | null
+  ecc_sbe: number | null
+  ecc_dbe: number | null
+  pcie_replay: number | null
+  power_violation: number | null
+  thermal_violation: number | null
 }
 
 export interface GpuHistory {
@@ -23,6 +29,12 @@ export interface GpuHistory {
   power_usage_watts: number | null
   sm_clock_mhz: number | null
   mem_clock_mhz: number | null
+  xid_errors: number | null
+  ecc_sbe: number | null
+  ecc_dbe: number | null
+  pcie_replay: number | null
+  power_violation: number | null
+  thermal_violation: number | null
 }
 
 export interface NodeLatest {
@@ -94,6 +106,46 @@ export interface DiskLatest {
   total_bytes: number | null
   avail_bytes: number | null
   usage_percent: number | null
+}
+
+// ── Dashboard / Device 타입 ──────────────────────────────────
+export type SensorStatus = 'up' | 'down' | 'warning' | 'pause'
+
+export interface Sensor {
+  key: string
+  host_ip: string
+  type: 'GPU' | 'Disk' | 'Network' | 'Node'
+  name: string
+  status: SensorStatus
+  detail?: string
+}
+
+export interface DashboardSummary {
+  counts: { up: number; down: number; warning: number; pause: number; total: number }
+  alerts: Sensor[]
+  sensors: Sensor[]
+}
+
+export interface Device {
+  host_ip: string
+  sensor_types: ('gpu' | 'node' | 'disk' | 'network')[]
+}
+
+// ── Settings 타입 ─────────────────────────────────────────────
+export interface RegisteredDevice {
+  id: number
+  host_ip: string
+  display_name: string
+  created_at: string
+}
+
+export interface SensorConfig {
+  id: number
+  host_ip: string
+  sensor_type: 'gpu' | 'node' | 'disk' | 'network'
+  sensor_name: string
+  enabled: boolean
+  display_name: string | null
 }
 
 export type TimeRange = '1H' | '6H' | '24H' | '7D'

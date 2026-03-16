@@ -14,7 +14,8 @@ def get_gpu_latest():
                     collected_at, host_ip, gpu_index, gpu_uuid, model_name,
                     gpu_utilization, memory_used_mb, memory_free_mb,
                     temperature_celsius, power_usage_watts,
-                    sm_clock_mhz, mem_clock_mhz
+                    sm_clock_mhz, mem_clock_mhz,
+                    xid_errors, ecc_sbe, ecc_dbe, pcie_replay, power_violation, thermal_violation
                 FROM gpu_metrics
                 ORDER BY gpu_index, collected_at DESC
             """)
@@ -34,7 +35,8 @@ def get_gpu_history(
                 SELECT collected_at, gpu_index,
                     gpu_utilization, memory_used_mb, memory_free_mb,
                     temperature_celsius, power_usage_watts,
-                    sm_clock_mhz, mem_clock_mhz
+                    sm_clock_mhz, mem_clock_mhz,
+                    xid_errors, ecc_sbe, ecc_dbe, pcie_replay, power_violation, thermal_violation
                 FROM gpu_metrics
                 WHERE gpu_index = %s
                   AND collected_at BETWEEN %s AND %s

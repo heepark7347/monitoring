@@ -44,6 +44,12 @@ data:
         "power_usage_watts":  "DCGM_FI_DEV_POWER_USAGE",
         "sm_clock_mhz":       "DCGM_FI_DEV_SM_CLOCK",
         "mem_clock_mhz":      "DCGM_FI_DEV_MEM_CLOCK",
+        "xid_errors":         "DCGM_FI_DEV_XID_ERRORS",
+        "ecc_sbe":            "DCGM_FI_DEV_ECC_SBE_VOL_TOTAL",
+        "ecc_dbe":            "DCGM_FI_DEV_ECC_DBE_VOL_TOTAL",
+        "pcie_replay":        "DCGM_FI_DEV_PCIE_REPLAY_COUNTER",
+        "power_violation":    "DCGM_FI_DEV_POWER_VIOLATION",
+        "thermal_violation":  "DCGM_FI_DEV_THERMAL_VIOLATION",
     }
 
     # ── Node Exporter 메트릭 정의 (host 단위) ────────────────────────
@@ -74,10 +80,22 @@ data:
         temperature_celsius FLOAT,
         power_usage_watts   FLOAT,
         sm_clock_mhz        FLOAT,
-        mem_clock_mhz       FLOAT
+        mem_clock_mhz       FLOAT,
+        xid_errors          FLOAT,
+        ecc_sbe             FLOAT,
+        ecc_dbe             FLOAT,
+        pcie_replay         FLOAT,
+        power_violation     FLOAT,
+        thermal_violation   FLOAT
     );
     CREATE INDEX IF NOT EXISTS idx_gpu_metrics_time ON gpu_metrics(collected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_gpu_metrics_host ON gpu_metrics(host_ip, gpu_index);
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS xid_errors        FLOAT;
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS ecc_sbe           FLOAT;
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS ecc_dbe           FLOAT;
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS pcie_replay       FLOAT;
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS power_violation   FLOAT;
+    ALTER TABLE gpu_metrics ADD COLUMN IF NOT EXISTS thermal_violation FLOAT;
 
     CREATE TABLE IF NOT EXISTS node_metrics (
         id                      BIGSERIAL PRIMARY KEY,
@@ -288,7 +306,9 @@ data:
             (now, h, gi, gu, mo,
              m.get("gpu_utilization"), m.get("memory_used_mb"), m.get("memory_free_mb"),
              m.get("temperature_celsius"), m.get("power_usage_watts"),
-             m.get("sm_clock_mhz"), m.get("mem_clock_mhz"))
+             m.get("sm_clock_mhz"), m.get("mem_clock_mhz"),
+             m.get("xid_errors"), m.get("ecc_sbe"), m.get("ecc_dbe"),
+             m.get("pcie_replay"), m.get("power_violation"), m.get("thermal_violation"))
             for (h, gi, gu, mo), m in collected.items()
         ]
         conn = get_db_conn()
@@ -298,7 +318,8 @@ data:
                     INSERT INTO gpu_metrics (
                         collected_at, host_ip, gpu_index, gpu_uuid, model_name,
                         gpu_utilization, memory_used_mb, memory_free_mb,
-                        temperature_celsius, power_usage_watts, sm_clock_mhz, mem_clock_mhz
+                        temperature_celsius, power_usage_watts, sm_clock_mhz, mem_clock_mhz,
+                        xid_errors, ecc_sbe, ecc_dbe, pcie_replay, power_violation, thermal_violation
                     ) VALUES %s
                 """, rows)
         conn.close()

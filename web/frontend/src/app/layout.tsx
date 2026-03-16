@@ -3,7 +3,7 @@ import './globals.css'
 import Sidebar from '@/components/layout/Sidebar'
 
 export const metadata: Metadata = {
-  title: 'GPU Monitoring Dashboard',
+  title: 'CONB Monitoring',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

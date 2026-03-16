@@ -14,7 +14,44 @@ export const fetcher = (url: string) =>
     return r.json()
   })
 
+export const poster = (url: string, method: 'POST' | 'DELETE' = 'POST') =>
+  fetch(url, { method }).then(r => {
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+    return r.json()
+  })
+
+export const jsonFetch = (url: string, method: 'POST' | 'PATCH' | 'DELETE', body?: object) =>
+  fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  }).then(r => {
+    if (!r.ok) return r.json().then(e => Promise.reject(new Error(e.detail ?? `${r.status}`)))
+    return r.json()
+  })
+
 export const api = {
+  dashboard: {
+    summary: () => buildUrl('/api/dashboard/summary'),
+    pause:   (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
+    resume:  (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
+  },
+  devices: {
+    list: () => buildUrl('/api/devices'),
+  },
+  settings: {
+    devices: {
+      list:     ()                    => buildUrl('/api/settings/devices'),
+      add:      ()                    => buildUrl('/api/settings/devices'),
+      update:   (hostIp: string)      => buildUrl(`/api/settings/devices/${encodeURIComponent(hostIp)}`),
+      remove:   (hostIp: string)      => buildUrl(`/api/settings/devices/${encodeURIComponent(hostIp)}`),
+      discover: (hostIp: string)      => buildUrl(`/api/settings/sensors/discover/${encodeURIComponent(hostIp)}`),
+    },
+    sensors: {
+      list:   (hostIp: string)  => buildUrl('/api/settings/sensors', { host_ip: hostIp }),
+      update: (id: number)      => buildUrl(`/api/settings/sensors/${id}`),
+    },
+  },
   gpu: {
     latest:  ()                              => buildUrl('/api/gpu/latest'),
     history: (hours: number, gpuIndex = 0)  => buildUrl('/api/gpu/history', { hours, gpu_index: gpuIndex }),
