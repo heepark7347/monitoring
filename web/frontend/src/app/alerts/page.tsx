@@ -13,13 +13,15 @@ const STATUS_CFG: Record<SensorStatus, { label: string; dot: string; text: strin
 
 const STATUS_ORDER: SensorStatus[] = ['up', 'down', 'warning', 'pause']
 
-const TYPE_ORDER: Sensor['type'][] = ['GPU', 'Node', 'Network', 'Disk']
+const TYPE_ORDER: Sensor['type'][] = ['GPU', 'Node', 'Network', 'Disk', 'ICMP', 'Port']
 
 const TYPE_CFG: Record<Sensor['type'], { icon: string; label: string }> = {
   GPU:     { icon: '▣', label: 'GPU' },
   Node:    { icon: '⬡', label: 'System' },
   Network: { icon: '⇆', label: 'Network' },
   Disk:    { icon: '◫', label: 'Disk' },
+  ICMP:    { icon: '⟳', label: 'ICMP' },
+  Port:    { icon: '⇌', label: 'Port' },
 }
 
 function SensorRow({ sensor, onPause, onResume }: {
@@ -34,10 +36,6 @@ function SensorRow({ sensor, onPause, onResume }: {
       <span className={`h-2 w-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
       <span className="text-xs text-ink-muted/60 w-16">{TYPE_CFG[sensor.type].label}</span>
       <span className="flex-1 text-sm text-ink/85 font-mono">{sensor.name}</span>
-      <span className="text-xs text-ink-muted/60 font-mono hidden md:block">{sensor.host_ip}</span>
-      {sensor.detail && (
-        <span className="text-xs text-ink-muted hidden lg:block max-w-xs truncate">{sensor.detail}</span>
-      )}
       <button
         onClick={() => isPaused ? onResume(sensor.key) : onPause(sensor.key)}
         className={`flex-shrink-0 rounded px-3 py-1 text-xs font-medium transition-colors ${
@@ -100,8 +98,8 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Alerts</h1>
-        <p className="text-sm text-ink-muted/60 mt-0.5">전체 센서 상태 · 종류별</p>
+        <h1 className="text-xl font-semibold text-ink">Sensor</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">전체 센서 상태</p>
       </div>
 
       {/* 상태 탭 */}

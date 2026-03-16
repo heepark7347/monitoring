@@ -31,11 +31,11 @@ function AddDeviceModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   const [loading, setLoading]   = useState(false)
 
   async function submit() {
-    if (!hostIp.trim()) return
+    if (!hostIp.trim() || !dispName.trim()) return
     setLoading(true); setError('')
     try {
       await jsonFetch(api.settings.devices.add(), 'POST', {
-        host_ip: hostIp.trim(),
+        host_ip:      hostIp.trim(),
         display_name: dispName.trim(),
       })
       onAdded()
@@ -51,30 +51,30 @@ function AddDeviceModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-card border border-accent/20 rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-ink/85 font-mono">새 장비 등록</p>
+          <p className="text-sm font-semibold text-ink/85 font-mono">Add Device</p>
           <button onClick={onClose} className="text-ink-muted/60 hover:text-ink/70 text-lg leading-none">✕</button>
         </div>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-ink-muted/60 block mb-1">IP 주소 *</label>
+            <label className="text-xs text-ink-muted/60 block mb-1">Device Name *</label>
             <input
               autoFocus
-              value={hostIp}
-              onChange={e => setHostIp(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
-              placeholder="예) 192.168.0.1"
-              className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent font-mono"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-ink-muted/60 block mb-1">장비명 (선택)</label>
-            <input
               value={dispName}
               onChange={e => setDispName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
-              placeholder="예) 서울-서버-01"
+              placeholder="e.g. Seoul-Server-01"
               className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-ink-muted/60 block mb-1">IPv4 Address *</label>
+            <input
+              value={hostIp}
+              onChange={e => setHostIp(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+              placeholder="e.g. 192.168.0.1"
+              className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent font-mono"
             />
           </div>
         </div>
@@ -82,22 +82,22 @@ function AddDeviceModal({ onClose, onAdded }: { onClose: () => void; onAdded: ()
         {error && <p className="text-xs text-red-400">{error}</p>}
 
         <p className="text-xs text-ink-muted/60">
-          해당 IP의 수집 데이터가 DB에 있어야 등록됩니다. 등록 후 장비 상세 페이지에서 센서를 직접 추가하세요.
+          장비 등록은 통신이 필요하지 않습니다. 등록 후 장비 상세 페이지에서 센서를 추가하세요.
         </p>
 
         <div className="flex gap-2">
           <button
             onClick={submit}
-            disabled={loading || !hostIp.trim()}
+            disabled={loading || !hostIp.trim() || !dispName.trim()}
             className="bg-accent hover:bg-accent/80 disabled:opacity-50 text-black text-sm px-4 py-2 rounded font-mono font-semibold transition-colors"
           >
-            {loading ? '등록 중...' : '등록'}
+            {loading ? 'Adding...' : 'Add Device'}
           </button>
           <button
             onClick={onClose}
             className="text-sm text-ink-muted hover:text-ink/85 px-4 py-2"
           >
-            취소
+            Cancel
           </button>
         </div>
       </div>
@@ -132,7 +132,7 @@ export default function DevicesPage() {
           className="flex items-center gap-1.5 bg-accent hover:bg-accent/80 text-black text-sm font-mono font-semibold px-4 py-2 rounded-lg transition-colors"
         >
           <span className="text-base leading-none">+</span>
-          장비 추가
+          Add Device
         </button>
       </div>
 
@@ -152,13 +152,16 @@ export default function DevicesPage() {
             return (
               <Link
                 key={d.host_ip}
-                href={`/devices/${encodeURIComponent(d.host_ip)}`}
+                href={`/devices/${d.id}`}
                 className="block bg-surface-card border border-surface-border rounded-xl p-5 hover:border-accent/30 hover:bg-surface-card/60 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
-                    <p className="font-mono text-ink font-semibold">{d.host_ip}</p>
+                    <div>
+                      {d.display_name && <p className="text-ink font-semibold text-sm">{d.display_name}</p>}
+                      <p className="font-mono text-ink-muted/70 text-xs">{d.host_ip}</p>
+                    </div>
                   </div>
                   <div className="flex gap-1.5">
                     {downCnt > 0 && (

@@ -1,16 +1,31 @@
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter
 from ..database import get_conn, fetchall_as_dict
 
 router = APIRouter()
 
 # ── 임계치 정의 ────────────────────────────────────────────────
-GPU_TEMP_WARN   = 80
 GPU_UTIL_WARN   = 90
+GPU_UTIL_DOWN   = 98
+GPU_TEMP_WARN   = 80
+GPU_TEMP_DOWN   = 90
+GPU_MEM_WARN    = 85
+GPU_MEM_DOWN    = 98
 DISK_DOWN_PCT   = 95
 DISK_WARN_PCT   = 85
 NODE_DOWN_PCT   = 95
 NODE_WARN_PCT   = 80
 NET_ERR_WARN    = 0.1   # pps
+STALE_THRESHOLD = timedelta(minutes=5)
+
+GPU_METRIC_DISPLAY = {
+    'utilization': 'Utilization',
+    'memory':      'Memory',
+    'temperature': 'Temperature',
+    'power':       'Power',
+    'health':      'Health',
+    'clock':       'Clock',
+}
 
 
 def _sensor_status(key: str, paused: set, *, down: bool, warn: bool) -> str:
@@ -21,6 +36,16 @@ def _sensor_status(key: str, paused: set, *, down: bool, warn: bool) -> str:
     if warn:
         return 'warning'
     return 'up'
+
+
+def _is_stale(collected_at) -> bool:
+    if collected_at is None:
+        return True
+    if isinstance(collected_at, str):
+        collected_at = datetime.fromisoformat(collected_at.replace('Z', '+00:00'))
+    if collected_at.tzinfo is None:
+        collected_at = collected_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - collected_at) > STALE_THRESHOLD
 
 
 @router.get("/summary")
@@ -39,44 +64,69 @@ def get_summary():
                 for r in fetchall_as_dict(cur)
             }
 
-            cur.execute("""
-                SELECT DISTINCT ON (host_ip, gpu_index)
-                    host_ip, gpu_index,
-                    xid_errors, ecc_sbe, ecc_dbe,
-                    gpu_utilization, temperature_celsius
-                FROM gpu_metrics
-                ORDER BY host_ip, gpu_index, collected_at DESC
-            """)
-            gpu_rows = [r for r in fetchall_as_dict(cur)
-                        if (r['host_ip'], 'gpu', str(r['gpu_index'])) in enabled]
+            # GPU — all hosts with GPU sensors enabled
+            gpu_host_ips = list({h for (h, st, _) in enabled if st == 'gpu'})
+            gpu_data: dict[tuple, dict] = {}
+            if gpu_host_ips:
+                cur.execute("""
+                    SELECT DISTINCT ON (host_ip, gpu_index)
+                        host_ip, gpu_index, collected_at,
+                        xid_errors, ecc_sbe, ecc_dbe, pcie_replay,
+                        gpu_utilization, temperature_celsius,
+                        memory_used_mb, memory_free_mb,
+                        power_usage_watts, sm_clock_mhz, mem_clock_mhz
+                    FROM gpu_metrics
+                    WHERE host_ip = ANY(%s)
+                    ORDER BY host_ip, gpu_index, collected_at DESC
+                """, (gpu_host_ips,))
+                for r in fetchall_as_dict(cur):
+                    gpu_data[(r['host_ip'], str(r['gpu_index']))] = r
 
+            # Disk
             cur.execute("""
                 SELECT DISTINCT ON (host_ip, mountpoint)
-                    host_ip, mountpoint, usage_percent
+                    host_ip, mountpoint, usage_percent, collected_at
                 FROM disk_metrics
                 ORDER BY host_ip, mountpoint, collected_at DESC
             """)
             disk_rows = [r for r in fetchall_as_dict(cur)
                          if (r['host_ip'], 'disk', r['mountpoint']) in enabled]
 
+            # Network
             cur.execute("""
                 SELECT DISTINCT ON (host_ip, if_descr)
                     host_ip, if_descr, if_oper_status,
-                    if_in_errors_rate, if_out_errors_rate
+                    if_in_errors_rate, if_out_errors_rate, collected_at
                 FROM snmp_interface_metrics
                 ORDER BY host_ip, if_descr, collected_at DESC
             """)
             net_rows = [r for r in fetchall_as_dict(cur)
                         if (r['host_ip'], 'network', r['if_descr']) in enabled]
 
+            # Node
             cur.execute("""
                 SELECT DISTINCT ON (host_ip)
-                    host_ip, cpu_usage_percent, memory_usage_percent
+                    host_ip, cpu_usage_percent, memory_usage_percent, collected_at
                 FROM node_metrics
                 ORDER BY host_ip, collected_at DESC
             """)
             node_rows = [r for r in fetchall_as_dict(cur)
                          if (r['host_ip'], 'node', 'system') in enabled]
+
+            # Connectivity (ICMP + Port)
+            conn_rows = []
+            try:
+                cur.execute("""
+                    SELECT DISTINCT ON (host_ip, sensor_type, sensor_name)
+                        host_ip, sensor_type, sensor_name,
+                        is_reachable, latency_ms, collected_at
+                    FROM connectivity_metrics
+                    ORDER BY host_ip, sensor_type, sensor_name, collected_at DESC
+                """)
+                conn_rows = [r for r in fetchall_as_dict(cur)
+                             if (r['host_ip'], r['sensor_type'], r['sensor_name']) in enabled]
+            except Exception:
+                pass  # Table may not exist yet
 
             cur.execute("SELECT sensor_key FROM sensor_pauses")
             paused = {r['sensor_key'] for r in fetchall_as_dict(cur)}
@@ -84,74 +134,182 @@ def get_summary():
     sensors = []
     alerts  = []
 
-    # GPU
-    for r in gpu_rows:
-        key  = f"{r['host_ip']}:gpu:{r['gpu_index']}"
-        xid  = r.get('xid_errors') or 0
-        dbe  = r.get('ecc_dbe') or 0
-        sbe  = r.get('ecc_sbe') or 0
-        temp = r.get('temperature_celsius') or 0
-        util = r.get('gpu_utilization') or 0
-        st   = _sensor_status(key, paused,
-                              down=xid > 0 or dbe > 0,
-                              warn=sbe > 0 or temp >= GPU_TEMP_WARN or util >= GPU_UTIL_WARN)
-        s = {'key': key, 'host_ip': r['host_ip'], 'type': 'GPU',
-             'name': f"GPU {r['gpu_index']}", 'status': st}
-        sensors.append(s)
-        if st in ('down', 'warning'):
-            detail = []
-            if xid > 0:  detail.append(f"XID={int(xid)}")
-            if dbe > 0:  detail.append(f"DBE={int(dbe)}")
-            if sbe > 0:  detail.append(f"SBE={int(sbe)}")
-            if temp >= GPU_TEMP_WARN: detail.append(f"Temp={temp:.1f}°C")
-            if util >= GPU_UTIL_WARN: detail.append(f"Util={util:.1f}%")
-            alerts.append({**s, 'detail': ', '.join(detail)})
+    # ── GPU (per-metric sensors, format: {gpu_index}_{metric}) ───
+    gpu_sensor_map: dict[tuple, set[str]] = {}
+    for (h, st, sn) in enabled:
+        if st == 'gpu' and '_' in sn:
+            idx, metric = sn.split('_', 1)
+            gpu_sensor_map.setdefault((h, idx), set()).add(metric)
 
-    # Disk
+    for (host_ip, gpu_idx), metrics in sorted(gpu_sensor_map.items()):
+        gpu   = gpu_data.get((host_ip, gpu_idx))
+        stale = _is_stale(gpu['collected_at'] if gpu else None)
+
+        for metric in ['utilization', 'memory', 'temperature', 'power', 'health', 'clock']:
+            if metric not in metrics:
+                continue
+            sn_full = f"{gpu_idx}_{metric}"
+            key     = f"{host_ip}:gpu:{sn_full}"
+
+            if metric == 'utilization':
+                val = float(gpu.get('gpu_utilization') or 0) if gpu else 0
+                st  = _sensor_status(key, paused,
+                                     down=stale or val >= GPU_UTIL_DOWN,
+                                     warn=val >= GPU_UTIL_WARN)
+                detail = f"{val:.1f}%"
+
+            elif metric == 'memory':
+                used  = float(gpu.get('memory_used_mb') or 0) if gpu else 0
+                free  = float(gpu.get('memory_free_mb') or 0) if gpu else 0
+                total = used + free
+                pct   = (used / total * 100) if total > 0 else 0
+                st    = _sensor_status(key, paused,
+                                       down=stale or pct >= GPU_MEM_DOWN,
+                                       warn=pct >= GPU_MEM_WARN)
+                detail = f"{pct:.1f}% ({used/1024:.1f}GB)" if total > 0 else "—"
+
+            elif metric == 'temperature':
+                val = float(gpu.get('temperature_celsius') or 0) if gpu else 0
+                st  = _sensor_status(key, paused,
+                                     down=stale or val >= GPU_TEMP_DOWN,
+                                     warn=val >= GPU_TEMP_WARN)
+                detail = f"{val:.1f}°C"
+
+            elif metric == 'power':
+                val = float(gpu.get('power_usage_watts') or 0) if gpu else 0
+                st  = _sensor_status(key, paused, down=stale, warn=False)
+                detail = f"{val:.1f}W"
+
+            elif metric == 'health':
+                xid  = float(gpu.get('xid_errors') or 0) if gpu else 0
+                dbe  = float(gpu.get('ecc_dbe') or 0) if gpu else 0
+                sbe  = float(gpu.get('ecc_sbe') or 0) if gpu else 0
+                pcie = float(gpu.get('pcie_replay') or 0) if gpu else 0
+                st   = _sensor_status(key, paused,
+                                      down=stale or xid > 0 or dbe > 0,
+                                      warn=sbe > 0 or pcie > 0)
+                parts = []
+                if xid > 0:  parts.append(f"XID={int(xid)}")
+                if dbe > 0:  parts.append(f"DBE={int(dbe)}")
+                if sbe > 0:  parts.append(f"SBE={int(sbe)}")
+                detail = ', '.join(parts) if parts else "OK"
+
+            elif metric == 'clock':
+                sm  = float(gpu.get('sm_clock_mhz') or 0) if gpu else 0
+                st  = _sensor_status(key, paused, down=stale, warn=False)
+                detail = f"SM {int(sm)}MHz" if sm else "—"
+
+            else:
+                continue
+
+            label = GPU_METRIC_DISPLAY.get(metric, metric.capitalize())
+            s = {
+                'key':         key,
+                'host_ip':     host_ip,
+                'type':        'GPU',
+                'sensor_name': sn_full,
+                'name':        f"GPU {gpu_idx} · {label}",
+                'status':      st,
+                'detail':      detail,
+            }
+            sensors.append(s)
+            if st in ('down', 'warning'):
+                alerts.append(s)
+
+    # ── Disk ──────────────────────────────────────────────────────
     for r in disk_rows:
-        key = f"{r['host_ip']}:disk:{r['mountpoint']}"
-        pct = r.get('usage_percent') or 0
-        st  = _sensor_status(key, paused,
-                             down=pct >= DISK_DOWN_PCT,
-                             warn=pct >= DISK_WARN_PCT)
-        s = {'key': key, 'host_ip': r['host_ip'], 'type': 'Disk',
-             'name': r['mountpoint'], 'status': st}
+        key   = f"{r['host_ip']}:disk:{r['mountpoint']}"
+        pct   = float(r.get('usage_percent') or 0)
+        stale = _is_stale(r.get('collected_at'))
+        st    = _sensor_status(key, paused,
+                               down=stale or pct >= DISK_DOWN_PCT,
+                               warn=pct >= DISK_WARN_PCT)
+        s = {
+            'key':         key,
+            'host_ip':     r['host_ip'],
+            'type':        'Disk',
+            'sensor_name': r['mountpoint'],
+            'name':        r['mountpoint'],
+            'status':      st,
+            'detail':      f"{pct:.1f}%",
+        }
         sensors.append(s)
         if st in ('down', 'warning'):
             alerts.append({**s, 'detail': f"사용률 {pct:.1f}%"})
 
-    # Network
+    # ── Network ───────────────────────────────────────────────────
     for r in net_rows:
         key   = f"{r['host_ip']}:network:{r['if_descr']}"
         oper  = r.get('if_oper_status') or 1
-        in_e  = r.get('if_in_errors_rate') or 0
-        out_e = r.get('if_out_errors_rate') or 0
+        in_e  = float(r.get('if_in_errors_rate') or 0)
+        out_e = float(r.get('if_out_errors_rate') or 0)
+        stale = _is_stale(r.get('collected_at'))
         st    = _sensor_status(key, paused,
-                               down=oper != 1,
+                               down=stale or oper != 1,
                                warn=in_e > NET_ERR_WARN or out_e > NET_ERR_WARN)
-        s = {'key': key, 'host_ip': r['host_ip'], 'type': 'Network',
-             'name': r['if_descr'], 'status': st}
+        s = {
+            'key':         key,
+            'host_ip':     r['host_ip'],
+            'type':        'Network',
+            'sensor_name': r['if_descr'],
+            'name':        r['if_descr'],
+            'status':      st,
+            'detail':      'Interface Down' if oper != 1 else f"Err {in_e+out_e:.3f}pps",
+        }
         sensors.append(s)
         if st in ('down', 'warning'):
-            detail = 'Interface Down' if oper != 1 else f"Err in={in_e:.3f} out={out_e:.3f} pps"
+            detail = 'Interface Down' if oper != 1 else f"Err in={in_e:.3f} out={out_e:.3f}pps"
             alerts.append({**s, 'detail': detail})
 
-    # Node
+    # ── Node ──────────────────────────────────────────────────────
     for r in node_rows:
-        key = f"{r['host_ip']}:node"
-        cpu = r.get('cpu_usage_percent') or 0
-        mem = r.get('memory_usage_percent') or 0
-        st  = _sensor_status(key, paused,
-                             down=cpu >= NODE_DOWN_PCT or mem >= NODE_DOWN_PCT,
-                             warn=cpu >= NODE_WARN_PCT or mem >= NODE_WARN_PCT)
-        s = {'key': key, 'host_ip': r['host_ip'], 'type': 'Node',
-             'name': 'System', 'status': st}
+        key   = f"{r['host_ip']}:node:system"
+        cpu   = float(r.get('cpu_usage_percent') or 0)
+        mem   = float(r.get('memory_usage_percent') or 0)
+        stale = _is_stale(r.get('collected_at'))
+        st    = _sensor_status(key, paused,
+                               down=stale or cpu >= NODE_DOWN_PCT or mem >= NODE_DOWN_PCT,
+                               warn=cpu >= NODE_WARN_PCT or mem >= NODE_WARN_PCT)
+        detail_parts = []
+        if cpu >= NODE_WARN_PCT: detail_parts.append(f"CPU {cpu:.1f}%")
+        if mem >= NODE_WARN_PCT: detail_parts.append(f"MEM {mem:.1f}%")
+        s = {
+            'key':         key,
+            'host_ip':     r['host_ip'],
+            'type':        'Node',
+            'sensor_name': 'system',
+            'name':        'System',
+            'status':      st,
+            'detail':      ', '.join(detail_parts) if detail_parts else f"CPU {cpu:.1f}% MEM {mem:.1f}%",
+        }
         sensors.append(s)
         if st in ('down', 'warning'):
-            detail = []
-            if cpu >= NODE_WARN_PCT: detail.append(f"CPU {cpu:.1f}%")
-            if mem >= NODE_WARN_PCT: detail.append(f"MEM {mem:.1f}%")
-            alerts.append({**s, 'detail': ', '.join(detail)})
+            alerts.append(s)
+
+    # ── Connectivity (ICMP + Port) ─────────────────────────────────
+    for r in conn_rows:
+        key       = f"{r['host_ip']}:{r['sensor_type']}:{r['sensor_name']}"
+        stale     = _is_stale(r.get('collected_at'))
+        reachable = bool(r.get('is_reachable', False))
+        st        = _sensor_status(key, paused,
+                                   down=stale or not reachable,
+                                   warn=False)
+        latency   = r.get('latency_ms')
+        type_label = 'ICMP' if r['sensor_type'] == 'icmp' else 'Port'
+        display   = 'ICMP Ping' if r['sensor_type'] == 'icmp' else f"TCP:{r['sensor_name']}"
+        detail    = f"{latency:.1f}ms" if latency else ('Unreachable' if not reachable else 'Stale')
+        s = {
+            'key':         key,
+            'host_ip':     r['host_ip'],
+            'type':        type_label,
+            'sensor_name': r['sensor_name'],
+            'name':        display,
+            'status':      st,
+            'detail':      detail,
+        }
+        sensors.append(s)
+        if st in ('down', 'warning'):
+            alerts.append(s)
 
     counts = {
         'up':      sum(1 for s in sensors if s['status'] == 'up'),
@@ -161,6 +319,30 @@ def get_summary():
         'total':   len(sensors),
     }
     return {'counts': counts, 'alerts': alerts, 'sensors': sensors}
+
+
+@router.get("/connectivity/{host_ip:path}/history")
+def get_connectivity_history(
+    host_ip:     str,
+    sensor_type: str   = Query(...),
+    sensor_name: str   = Query(...),
+    hours:       float = Query(default=1),
+):
+    end   = datetime.now(timezone.utc)
+    start = end - timedelta(hours=hours)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("""
+                    SELECT collected_at, is_reachable, latency_ms, error_msg
+                    FROM connectivity_metrics
+                    WHERE host_ip = %s AND sensor_type = %s AND sensor_name = %s
+                      AND collected_at BETWEEN %s AND %s
+                    ORDER BY collected_at ASC
+                """, (host_ip, sensor_type, sensor_name, start, end))
+                return fetchall_as_dict(cur)
+            except Exception:
+                return []
 
 
 @router.post("/sensors/{sensor_key:path}/pause")

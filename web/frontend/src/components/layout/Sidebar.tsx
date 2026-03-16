@@ -6,7 +6,7 @@ import { useTheme } from '@/components/providers/ThemeProvider'
 const NAV = [
   { href: '/dashboard', icon: '⬡', label: 'Dashboard' },
   { href: '/devices',   icon: '▣', label: 'Devices'   },
-  { href: '/alerts',    icon: '⚠', label: 'Alerts'    },
+  { href: '/alerts',    icon: '⚠', label: 'Sensor'    },
 ]
 
 export default function Sidebar() {
@@ -58,7 +58,7 @@ export default function Sidebar() {
             {theme === 'dark' ? '[ DARK ]' : '[LIGHT ]'}
           </span>
         </button>
-        <p className="text-xs text-ink-faint font-mono px-1">v1.1.0</p>
+        <p className="text-xs text-ink-faint font-mono px-1">v1.2.0</p>
       </div>
     </aside>
   )

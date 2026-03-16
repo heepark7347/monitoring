@@ -35,9 +35,12 @@ export const api = {
     summary: () => buildUrl('/api/dashboard/summary'),
     pause:   (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
     resume:  (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
+    connectivityHistory: (hostIp: string, sensorType: string, sensorName: string, hours: number) =>
+      buildUrl(`/api/dashboard/connectivity/${encodeURIComponent(hostIp)}/history`, { sensor_type: sensorType, sensor_name: sensorName, hours }),
   },
   devices: {
-    list: () => buildUrl('/api/devices'),
+    list:  ()                => buildUrl('/api/devices'),
+    byId:  (id: number)      => buildUrl(`/api/devices/${id}`),
   },
   settings: {
     devices: {
@@ -54,11 +57,14 @@ export const api = {
       update:    (id: number)     => buildUrl(`/api/settings/sensors/${id}`),
       remove:    (id: number)     => buildUrl(`/api/settings/sensors/${id}`),
     },
+    probe: () => buildUrl('/api/settings/probe'),
   },
   gpu: {
-    latest:  ()                              => buildUrl('/api/gpu/latest'),
-    history: (hours: number, gpuIndex = 0)  => buildUrl('/api/gpu/history', { hours, gpu_index: gpuIndex }),
-    indexes: ()                              => buildUrl('/api/gpu/indexes'),
+    latest:       ()                                              => buildUrl('/api/gpu/latest'),
+    history:      (hours: number, gpuIndex = 0, hostIp?: string) => buildUrl('/api/gpu/history', { hours, gpu_index: gpuIndex, host_ip: hostIp }),
+    indexes:      ()                                             => buildUrl('/api/gpu/indexes'),
+    sensorDetail: (hostIp: string, sensorName: string, hours: number) =>
+      buildUrl(`/api/gpu/sensor/${encodeURIComponent(hostIp)}`, { sensor_name: sensorName, hours }),
   },
   node: {
     latest:      ()               => buildUrl('/api/node/latest'),

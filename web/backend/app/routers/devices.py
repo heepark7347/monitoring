@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from ..database import get_conn, fetchall_as_dict
 
 router = APIRouter()
@@ -10,7 +10,7 @@ def get_devices():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT rd.host_ip, rd.display_name,
+                SELECT rd.id, rd.host_ip, rd.display_name,
                        sc.sensor_type
                 FROM registered_devices rd
                 LEFT JOIN sensor_configs sc
@@ -24,6 +24,7 @@ def get_devices():
         ip = r['host_ip']
         if ip not in devices:
             devices[ip] = {
+                'id':           r['id'],
                 'host_ip':      ip,
                 'display_name': r['display_name'],
                 'sensor_types': [],
@@ -31,8 +32,23 @@ def get_devices():
         if r['sensor_type']:
             devices[ip]['sensor_types'].append(r['sensor_type'])
 
-    # 중복 제거
     for d in devices.values():
         d['sensor_types'] = list(dict.fromkeys(d['sensor_types']))
 
     return list(devices.values())
+
+
+@router.get("/{device_id}")
+def get_device(device_id: int):
+    """ID로 장비 정보 조회"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, host_ip, display_name, created_at FROM registered_devices WHERE id = %s",
+                (device_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, detail="장비를 찾을 수 없습니다.")
+            cols = [d[0] for d in cur.description]
+            return dict(zip(cols, row))

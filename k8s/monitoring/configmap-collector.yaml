@@ -14,6 +14,9 @@ data:
 
     import os
     import time
+    import socket
+    import subprocess
+    import re
     import logging
     import requests
     import psycopg2
@@ -169,6 +172,36 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_snmp_sys_time ON snmp_system_metrics(collected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_snmp_sys_host ON snmp_system_metrics(host_ip);
+
+    CREATE TABLE IF NOT EXISTS connectivity_metrics (
+        id           BIGSERIAL PRIMARY KEY,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        host_ip      VARCHAR(50)  NOT NULL,
+        sensor_type  VARCHAR(20)  NOT NULL,
+        sensor_name  VARCHAR(255) NOT NULL,
+        is_reachable BOOLEAN      NOT NULL,
+        latency_ms   FLOAT,
+        error_msg    TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_conn_metrics_time ON connectivity_metrics(collected_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conn_metrics_host ON connectivity_metrics(host_ip, sensor_type, sensor_name);
+
+    CREATE TABLE IF NOT EXISTS registered_devices (
+        id           SERIAL PRIMARY KEY,
+        host_ip      VARCHAR(50) UNIQUE NOT NULL,
+        display_name VARCHAR(100) NOT NULL DEFAULT '',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS sensor_configs (
+        id           SERIAL PRIMARY KEY,
+        host_ip      VARCHAR(50)  NOT NULL,
+        sensor_type  VARCHAR(20)  NOT NULL,
+        sensor_name  VARCHAR(255) NOT NULL,
+        enabled      BOOLEAN      NOT NULL DEFAULT TRUE,
+        display_name VARCHAR(100),
+        UNIQUE(host_ip, sensor_type, sensor_name)
+    );
     """
 
     def get_db_conn():
@@ -499,6 +532,70 @@ data:
         conn.close()
         log.info(f"[SNMP_SYS] INSERT 완료: {len(rows)}개 호스트")
 
+    def collect_connectivity():
+        """connectivity_metrics — ICMP ping + TCP port check for enabled sensors."""
+        conn = get_db_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT sc.host_ip, sc.sensor_type, sc.sensor_name
+                    FROM sensor_configs sc
+                    JOIN registered_devices rd ON rd.host_ip = sc.host_ip
+                    WHERE sc.enabled = true
+                      AND sc.sensor_type IN ('icmp', 'port')
+                """)
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+
+        if not rows:
+            return
+
+        now     = datetime.now(timezone.utc)
+        results = []
+        for (host_ip, sensor_type, sensor_name) in rows:
+            is_reachable = False
+            latency_ms   = None
+            error_msg    = None
+            try:
+                if sensor_type == 'icmp':
+                    result = subprocess.run(
+                        ['ping', '-c', '1', '-W', '2', host_ip],
+                        capture_output=True, timeout=5
+                    )
+                    is_reachable = result.returncode == 0
+                    if is_reachable:
+                        m = re.search(r'time=([\d.]+)', result.stdout.decode())
+                        latency_ms = float(m.group(1)) if m else None
+                    else:
+                        error_msg = 'ICMP unreachable'
+                elif sensor_type == 'port':
+                    port = int(sensor_name)
+                    start = time.time()
+                    with socket.create_connection((host_ip, port), timeout=3):
+                        latency_ms   = (time.time() - start) * 1000
+                        is_reachable = True
+            except subprocess.TimeoutExpired:
+                error_msg = 'Ping timeout'
+            except OSError as e:
+                error_msg = str(e)[:200]
+            except Exception as e:
+                error_msg = str(e)[:200]
+
+            results.append((now, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg))
+
+        conn = get_db_conn()
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(cur, """
+                    INSERT INTO connectivity_metrics
+                        (collected_at, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg)
+                    VALUES %s
+                """, results)
+        conn.close()
+        log.info(f"[CONN] 수집 완료: {len(results)}개 센서")
+
+
     def main():
         log.info(f"Collector 시작 | Prometheus={PROMETHEUS_URL} | 주기={COLLECT_INTERVAL}s")
         init_db()
@@ -509,6 +606,7 @@ data:
                 ("DISK",       collect_disk),
                 ("SNMP_IFACE", collect_snmp_iface),
                 ("SNMP_SYS",   collect_snmp_system),
+                ("CONN",       collect_connectivity),
             ]:
                 try:
                     fn()

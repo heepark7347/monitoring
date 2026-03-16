@@ -112,12 +112,13 @@ export interface DiskLatest {
 export type SensorStatus = 'up' | 'down' | 'warning' | 'pause'
 
 export interface Sensor {
-  key: string
-  host_ip: string
-  type: 'GPU' | 'Disk' | 'Network' | 'Node'
-  name: string
-  status: SensorStatus
-  detail?: string
+  key:         string
+  host_ip:     string
+  type:        'GPU' | 'Disk' | 'Network' | 'Node' | 'ICMP' | 'Port'
+  sensor_name: string
+  name:        string
+  status:      SensorStatus
+  detail?:     string
 }
 
 export interface DashboardSummary {
@@ -127,8 +128,17 @@ export interface DashboardSummary {
 }
 
 export interface Device {
-  host_ip: string
-  sensor_types: ('gpu' | 'node' | 'disk' | 'network')[]
+  id:           number
+  host_ip:      string
+  display_name: string
+  sensor_types: ('gpu' | 'node' | 'disk' | 'network' | 'icmp' | 'port')[]
+}
+
+export interface DeviceDetail {
+  id:           number
+  host_ip:      string
+  display_name: string
+  created_at:   string
 }
 
 // ── Settings 타입 ─────────────────────────────────────────────
@@ -140,19 +150,19 @@ export interface RegisteredDevice {
 }
 
 export interface SensorConfig {
-  id: number
-  host_ip: string
-  sensor_type: 'gpu' | 'node' | 'disk' | 'network'
+  id:          number
+  host_ip:     string
+  sensor_type: 'gpu' | 'node' | 'disk' | 'network' | 'icmp' | 'port'
   sensor_name: string
-  enabled: boolean
+  enabled:     boolean
   display_name: string | null
 }
 
 export interface AvailableSensor {
-  sensor_type: 'gpu' | 'node' | 'disk' | 'network'
+  sensor_type: 'gpu' | 'node' | 'disk' | 'network' | 'icmp' | 'port'
   sensor_name: string
-  registered: boolean
-  config_id: number | null
+  registered:  boolean
+  config_id:   number | null
 }
 
 export type TimeRange = '1H' | '6H' | '24H' | '7D'
