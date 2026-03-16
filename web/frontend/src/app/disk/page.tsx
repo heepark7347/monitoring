@@ -29,7 +29,7 @@ export default function DiskPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Disk Usage</h1>
-          <p className="text-sm text-slate-500 mt-0.5">파티션별 스토리지 현황</p>
+          <p className="text-sm text-ink-muted/60 mt-0.5">파티션별 스토리지 현황</p>
         </div>
         <TimeRangePicker value={range} onChange={setRange} />
       </div>
@@ -42,8 +42,8 @@ export default function DiskPage() {
             onClick={() => setMountpoint(d.mountpoint)}
             className={`bg-surface-card border rounded-xl p-5 flex items-center gap-5 transition-colors text-left ${
               mountpoint === d.mountpoint
-                ? 'border-blue-500'
-                : 'border-surface-border hover:border-slate-600'
+                ? 'border-accent'
+                : 'border-surface-border hover:border-surface-border/40'
             }`}
           >
             <DonutChart
@@ -52,21 +52,21 @@ export default function DiskPage() {
               size={100}
             />
             <div className="flex-1 min-w-0">
-              <p className="font-mono text-slate-200 text-sm truncate">{d.mountpoint}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{d.device} · {d.fstype}</p>
+              <p className="font-mono text-ink/85 text-sm truncate">{d.mountpoint}</p>
+              <p className="text-xs text-ink-muted/60 mt-0.5">{d.device} · {d.fstype}</p>
               <div className="mt-3 space-y-0.5">
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Total</span>
-                  <span className="font-mono text-slate-300">{fmtBytes(d.total_bytes)}</span>
+                  <span className="text-ink-muted/60">Total</span>
+                  <span className="font-mono text-ink/70">{fmtBytes(d.total_bytes)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Used</span>
-                  <span className={`font-mono ${(d.usage_percent ?? 0) >= 90 ? 'text-red-400' : (d.usage_percent ?? 0) >= 70 ? 'text-amber-400' : 'text-slate-300'}`}>
+                  <span className="text-ink-muted/60">Used</span>
+                  <span className={`font-mono ${(d.usage_percent ?? 0) >= 90 ? 'text-red-400' : (d.usage_percent ?? 0) >= 70 ? 'text-amber-400' : 'text-ink/70'}`}>
                     {fmtBytes(d.total_bytes != null && d.avail_bytes != null ? d.total_bytes - d.avail_bytes : null)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">Avail</span>
+                  <span className="text-ink-muted/60">Avail</span>
                   <span className="font-mono text-emerald-400">{fmtBytes(d.avail_bytes)}</span>
                 </div>
               </div>
@@ -77,8 +77,8 @@ export default function DiskPage() {
 
       {/* History chart */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">
-          Usage History — <span className="font-mono text-slate-300">{mountpoint}</span>
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">
+          Usage History — <span className="font-mono text-ink/70">{mountpoint}</span>
         </p>
         <LineChart
           series={[{
@@ -92,11 +92,11 @@ export default function DiskPage() {
       {/* Summary table */}
       <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-surface-border">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">전체 파티션 요약</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">전체 파티션 요약</p>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-slate-500 border-b border-surface-border">
+            <tr className="text-xs text-ink-muted/60 border-b border-surface-border">
               <th className="text-left px-5 py-2">Mountpoint</th>
               <th className="text-left px-4 py-2">Device</th>
               <th className="text-left px-4 py-2">FS</th>
@@ -111,13 +111,13 @@ export default function DiskPage() {
               <tr
                 key={d.mountpoint}
                 onClick={() => setMountpoint(d.mountpoint)}
-                className="border-b border-surface-border/50 cursor-pointer hover:bg-slate-700/30 transition-colors"
+                className="border-b border-surface-border/50 cursor-pointer hover:bg-surface-border/60/30 transition-colors"
               >
-                <td className="px-5 py-2.5 font-mono text-slate-300">{d.mountpoint}</td>
-                <td className="px-4 py-2.5 text-slate-500 font-mono text-xs">{d.device}</td>
-                <td className="px-4 py-2.5 text-slate-500">{d.fstype}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-300">{fmtBytes(d.total_bytes)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-300">
+                <td className="px-5 py-2.5 font-mono text-ink/70">{d.mountpoint}</td>
+                <td className="px-4 py-2.5 text-ink-muted/60 font-mono text-xs">{d.device}</td>
+                <td className="px-4 py-2.5 text-ink-muted/60">{d.fstype}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-ink/70">{fmtBytes(d.total_bytes)}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-ink/70">
                   {fmtBytes(d.total_bytes != null && d.avail_bytes != null ? d.total_bytes - d.avail_bytes : null)}
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-emerald-400">{fmtBytes(d.avail_bytes)}</td>

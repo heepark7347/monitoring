@@ -42,7 +42,7 @@ export default function SystemPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">System Status</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-ink-muted/60 mt-0.5">
             Uptime: {fmtUptime(n?.uptime_seconds ?? s?.uptime_seconds ?? null)}
           </p>
         </div>
@@ -60,13 +60,13 @@ export default function SystemPage() {
       {/* Gauges */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">CPU Usage</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">CPU Usage</p>
           <GaugeChart value={cpuPct} unit="%" />
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">Memory Usage</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Memory Usage</p>
           <GaugeChart value={memPct} unit="%" thresholds={[75, 90]} />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted/60">
             {fmtBytes(n?.memory_available_bytes ?? null)} free /
             {fmtBytes(n?.memory_total_bytes ?? null)}
           </p>
@@ -76,7 +76,7 @@ export default function SystemPage() {
       {/* SNMP memory breakdown */}
       {s && (
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-4">Memory Breakdown (SNMP)</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-4">Memory Breakdown (SNMP)</p>
           <div className="grid grid-cols-4 gap-4">
             {[
               { label: 'Total',   kb: s.mem_total_kb },
@@ -87,10 +87,10 @@ export default function SystemPage() {
               { label: 'Swap Avail', kb: s.mem_swap_avail_kb },
             ].map(({ label, kb }) => (
               <div key={label}>
-                <p className="text-xs text-slate-500">{label}</p>
-                <p className="text-lg font-mono font-bold text-slate-100">
+                <p className="text-xs text-ink-muted/60">{label}</p>
+                <p className="text-lg font-mono font-bold text-ink">
                   {kb ? `${(kb / 1024 / 1024).toFixed(1)}` : '—'}
-                  <span className="text-xs text-slate-400 ml-1">GB</span>
+                  <span className="text-xs text-ink-muted ml-1">GB</span>
                 </p>
               </div>
             ))}
@@ -101,7 +101,7 @@ export default function SystemPage() {
       {/* Time series */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">CPU Usage</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">CPU Usage</p>
           <LineChart
             series={[{
               name: 'CPU %', color: '#3b82f6',
@@ -112,7 +112,7 @@ export default function SystemPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Memory Usage</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Memory Usage</p>
           <LineChart
             series={[{
               name: 'Mem %', color: '#8b5cf6',
@@ -123,7 +123,7 @@ export default function SystemPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Load Average</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Load Average</p>
           <LineChart
             series={[
               { name: '1m',  color: '#10b981', data: (nodeHist ?? []).map((r: any) => ({ t: new Date(r.collected_at), v: r.load_1m ?? 0 })) },
@@ -134,7 +134,7 @@ export default function SystemPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Network (Node Exporter)</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Network (Node Exporter)</p>
           <LineChart
             series={[
               { name: 'RX B/s', color: '#3b82f6', data: (nodeHist ?? []).map((r: any) => ({ t: new Date(r.collected_at), v: r.net_receive_bytes ?? 0 })) },

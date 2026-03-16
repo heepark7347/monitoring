@@ -148,6 +148,13 @@ export interface SensorConfig {
   display_name: string | null
 }
 
+export interface AvailableSensor {
+  sensor_type: 'gpu' | 'node' | 'disk' | 'network'
+  sensor_name: string
+  registered: boolean
+  config_id: number | null
+}
+
 export type TimeRange = '1H' | '6H' | '24H' | '7D'
 
 export interface TimeRangeOption {

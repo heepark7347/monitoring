@@ -7,7 +7,6 @@ const NAV = [
   { href: '/dashboard', icon: '⬡', label: 'Dashboard' },
   { href: '/devices',   icon: '▣', label: 'Devices'   },
   { href: '/alerts',    icon: '⚠', label: 'Alerts'    },
-  { href: '/settings',  icon: '⚙', label: 'Settings'  },
 ]
 
 export default function Sidebar() {

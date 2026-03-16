@@ -48,8 +48,11 @@ export const api = {
       discover: (hostIp: string)      => buildUrl(`/api/settings/sensors/discover/${encodeURIComponent(hostIp)}`),
     },
     sensors: {
-      list:   (hostIp: string)  => buildUrl('/api/settings/sensors', { host_ip: hostIp }),
-      update: (id: number)      => buildUrl(`/api/settings/sensors/${id}`),
+      list:      (hostIp: string) => buildUrl('/api/settings/sensors', { host_ip: hostIp }),
+      available: (hostIp: string) => buildUrl(`/api/settings/sensors/available/${encodeURIComponent(hostIp)}`),
+      register:  ()               => buildUrl('/api/settings/sensors'),
+      update:    (id: number)     => buildUrl(`/api/settings/sensors/${id}`),
+      remove:    (id: number)     => buildUrl(`/api/settings/sensors/${id}`),
     },
   },
   gpu: {

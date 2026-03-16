@@ -1,7 +1,8 @@
 'use client'
-import useSWR from 'swr'
+import { useState } from 'react'
+import useSWR, { mutate as globalMutate } from 'swr'
 import Link from 'next/link'
-import { fetcher, api } from '@/lib/api'
+import { fetcher, jsonFetch, api } from '@/lib/api'
 import type { Device, DashboardSummary, SensorStatus } from '@/lib/types'
 
 const TYPE_LABEL: Record<string, string> = {
@@ -22,9 +23,94 @@ function worstStatus(statuses: SensorStatus[]): SensorStatus {
   return 'up'
 }
 
+// ── 장비 추가 모달 ─────────────────────────────────────────────
+function AddDeviceModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [hostIp, setHostIp]     = useState('')
+  const [dispName, setDispName] = useState('')
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+
+  async function submit() {
+    if (!hostIp.trim()) return
+    setLoading(true); setError('')
+    try {
+      await jsonFetch(api.settings.devices.add(), 'POST', {
+        host_ip: hostIp.trim(),
+        display_name: dispName.trim(),
+      })
+      onAdded()
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '등록 실패')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-card border border-accent/20 rounded-xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-ink/85 font-mono">새 장비 등록</p>
+          <button onClick={onClose} className="text-ink-muted/60 hover:text-ink/70 text-lg leading-none">✕</button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-ink-muted/60 block mb-1">IP 주소 *</label>
+            <input
+              autoFocus
+              value={hostIp}
+              onChange={e => setHostIp(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+              placeholder="예) 192.168.0.1"
+              className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-ink-muted/60 block mb-1">장비명 (선택)</label>
+            <input
+              value={dispName}
+              onChange={e => setDispName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+              placeholder="예) 서울-서버-01"
+              className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-red-400">{error}</p>}
+
+        <p className="text-xs text-ink-muted/60">
+          해당 IP의 수집 데이터가 DB에 있어야 등록됩니다. 등록 후 장비 상세 페이지에서 센서를 직접 추가하세요.
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            onClick={submit}
+            disabled={loading || !hostIp.trim()}
+            className="bg-accent hover:bg-accent/80 disabled:opacity-50 text-black text-sm px-4 py-2 rounded font-mono font-semibold transition-colors"
+          >
+            {loading ? '등록 중...' : '등록'}
+          </button>
+          <button
+            onClick={onClose}
+            className="text-sm text-ink-muted hover:text-ink/85 px-4 py-2"
+          >
+            취소
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 메인 페이지 ────────────────────────────────────────────────
 export default function DevicesPage() {
-  const { data: devices }  = useSWR<Device[]>(api.devices.list(), fetcher, { refreshInterval: 30000 })
+  const devicesKey = api.devices.list()
+  const { data: devices }  = useSWR<Device[]>(devicesKey, fetcher, { refreshInterval: 30000 })
   const { data: summary }  = useSWR<DashboardSummary>(api.dashboard.summary(), fetcher, { refreshInterval: 30000 })
+  const [showAdd, setShowAdd] = useState(false)
 
   // host_ip별 센서 상태 맵
   const hostStatusMap: Record<string, SensorStatus[]> = {}
@@ -35,9 +121,19 @@ export default function DevicesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Devices</h1>
-        <p className="text-sm text-ink-muted/60 mt-0.5">등록된 모니터링 디바이스</p>
+      {/* 헤더 */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Devices</h1>
+          <p className="text-sm text-ink-muted/60 mt-0.5">등록된 모니터링 디바이스</p>
+        </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 bg-accent hover:bg-accent/80 text-black text-sm font-mono font-semibold px-4 py-2 rounded-lg transition-colors"
+        >
+          <span className="text-base leading-none">+</span>
+          장비 추가
+        </button>
       </div>
 
       {!devices ? (
@@ -75,7 +171,7 @@ export default function DevicesPage() {
                         WARN {warnCnt}
                       </span>
                     )}
-                    {downCnt === 0 && warnCnt === 0 && (
+                    {downCnt === 0 && warnCnt === 0 && statuses.length > 0 && (
                       <span className="rounded-full bg-emerald-600/20 text-emerald-400 text-xs px-2 py-0.5 font-semibold">
                         정상
                       </span>
@@ -89,15 +185,25 @@ export default function DevicesPage() {
                       {TYPE_LABEL[t] ?? t}
                     </span>
                   ))}
+                  {d.sensor_types.length === 0 && (
+                    <span className="text-xs text-ink-muted/40 italic">센서 없음 — 상세 페이지에서 추가</span>
+                  )}
                 </div>
 
                 <p className="text-xs text-ink-muted/60 mt-3">
-                  {statuses.length}개 센서 · 클릭하여 상세 보기
+                  {statuses.length > 0 ? `${statuses.length}개 센서 ·` : ''} 클릭하여 상세 보기
                 </p>
               </Link>
             )
           })}
         </div>
+      )}
+
+      {showAdd && (
+        <AddDeviceModal
+          onClose={() => setShowAdd(false)}
+          onAdded={() => globalMutate(devicesKey)}
+        />
       )}
     </div>
   )

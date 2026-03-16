@@ -36,7 +36,7 @@ export default function NetworkPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Network Traffic</h1>
-          <p className="text-sm text-slate-500 mt-0.5">SNMP if_mib · 인터페이스별 트래픽</p>
+          <p className="text-sm text-ink-muted/60 mt-0.5">SNMP if_mib · 인터페이스별 트래픽</p>
         </div>
         <div className="flex items-center gap-3">
           <TimeRangePicker value={range} onChange={setRange} />
@@ -45,7 +45,7 @@ export default function NetworkPage() {
 
       {/* Interface selector */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-4">
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">인터페이스 선택</p>
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">인터페이스 선택</p>
         <div className="flex flex-wrap gap-2">
           {(ifList ?? []).map(i => (
             <button
@@ -53,8 +53,8 @@ export default function NetworkPage() {
               onClick={() => setIface(i.if_descr)}
               className={`px-3 py-1.5 rounded text-xs font-mono transition-colors border ${
                 iface === i.if_descr
-                  ? 'border-blue-500 bg-blue-600/20 text-blue-300'
-                  : 'border-surface-border text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                  ? 'border-accent bg-accent/10 text-accent/80'
+                  : 'border-surface-border text-ink-muted hover:border-slate-500 hover:text-ink/85'
               }`}
             >
               <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${i.is_up ? 'bg-emerald-400' : 'bg-red-500'}`} />
@@ -67,22 +67,22 @@ export default function NetworkPage() {
       {/* Current stats for selected interface */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Status</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-1">Status</p>
           <p className={`text-lg font-bold ${selected?.if_oper_status === 1 ? 'text-emerald-400' : 'text-red-400'}`}>
             {selected?.if_oper_status === 1 ? 'UP' : 'DOWN'}
           </p>
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">IN (현재)</p>
-          <p className="text-lg font-bold font-mono text-blue-400">{fmtRate(selected?.if_in_octets_rate ?? null)}</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-1">IN (현재)</p>
+          <p className="text-lg font-bold font-mono text-accent">{fmtRate(selected?.if_in_octets_rate ?? null)}</p>
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">OUT (현재)</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-1">OUT (현재)</p>
           <p className="text-lg font-bold font-mono text-amber-400">{fmtRate(selected?.if_out_octets_rate ?? null)}</p>
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Packets IN</p>
-          <p className="text-lg font-bold font-mono text-slate-100">
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-1">Packets IN</p>
+          <p className="text-lg font-bold font-mono text-ink">
             {selected?.if_in_ucast_pkts_rate != null ? `${selected.if_in_ucast_pkts_rate.toFixed(1)} pps` : '—'}
           </p>
         </div>
@@ -90,8 +90,8 @@ export default function NetworkPage() {
 
       {/* Traffic charts */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">
-          Traffic — <span className="font-mono text-slate-300">{iface}</span>
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">
+          Traffic — <span className="font-mono text-ink/70">{iface}</span>
         </p>
         <LineChart
           series={[
@@ -111,7 +111,7 @@ export default function NetworkPage() {
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Packets (pps)</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Packets (pps)</p>
           <LineChart
             series={[
               {
@@ -128,7 +128,7 @@ export default function NetworkPage() {
         </div>
 
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Errors &amp; Discards</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Errors &amp; Discards</p>
           <LineChart
             series={[
               {
@@ -148,11 +148,11 @@ export default function NetworkPage() {
       {/* All interfaces table */}
       <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-surface-border">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">전체 인터페이스 현황</p>
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">전체 인터페이스 현황</p>
         </div>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-slate-500 border-b border-surface-border">
+            <tr className="text-xs text-ink-muted/60 border-b border-surface-border">
               <th className="text-left px-5 py-2">Interface</th>
               <th className="text-left px-4 py-2">Status</th>
               <th className="text-right px-4 py-2">IN</th>
@@ -168,24 +168,24 @@ export default function NetworkPage() {
                 key={i.if_descr}
                 onClick={() => setIface(i.if_descr)}
                 className={`border-b border-surface-border/50 cursor-pointer transition-colors ${
-                  iface === i.if_descr ? 'bg-blue-600/10' : 'hover:bg-slate-700/30'
+                  iface === i.if_descr ? 'bg-accent/10' : 'hover:bg-surface-border/60/30'
                 }`}
               >
-                <td className="px-5 py-2.5 font-mono text-slate-300">{i.if_descr}</td>
+                <td className="px-5 py-2.5 font-mono text-ink/70">{i.if_descr}</td>
                 <td className="px-4 py-2.5">
                   <span className={`text-xs font-medium ${i.if_oper_status === 1 ? 'text-emerald-400' : 'text-red-500'}`}>
                     {i.if_oper_status === 1 ? 'UP' : 'DOWN'}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-blue-300">{fmtRate(i.if_in_octets_rate)}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-accent/80">{fmtRate(i.if_in_octets_rate)}</td>
                 <td className="px-4 py-2.5 text-right font-mono text-amber-300">{fmtRate(i.if_out_octets_rate)}</td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-400">
+                <td className="px-4 py-2.5 text-right font-mono text-ink-muted">
                   {i.if_in_ucast_pkts_rate != null ? `${i.if_in_ucast_pkts_rate.toFixed(1)}` : '—'}
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-slate-400">
+                <td className="px-4 py-2.5 text-right font-mono text-ink-muted">
                   {i.if_out_ucast_pkts_rate != null ? `${i.if_out_ucast_pkts_rate.toFixed(1)}` : '—'}
                 </td>
-                <td className="px-5 py-2.5 text-right font-mono text-slate-500">
+                <td className="px-5 py-2.5 text-right font-mono text-ink-muted/60">
                   {((i.if_in_errors_rate ?? 0) + (i.if_out_errors_rate ?? 0)).toFixed(2)}
                 </td>
               </tr>

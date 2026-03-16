@@ -39,8 +39,7 @@ def _init_tables():
 
 
 def _seed_preset():
-    """183.111.14.6을 등록 장비로 사전 등록 (최초 1회)"""
-    from .routers.settings import _discover_sensors
+    """183.111.14.6을 등록 장비로 사전 등록 (최초 1회, 센서는 사용자가 직접 추가)"""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -49,7 +48,6 @@ def _seed_preset():
                 (PRESET_HOST, "")
             )
         conn.commit()
-    _discover_sensors(PRESET_HOST)
 
 
 @asynccontextmanager
