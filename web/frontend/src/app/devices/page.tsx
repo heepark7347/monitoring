@@ -36,14 +36,14 @@ export default function DevicesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Devices</h1>
-        <p className="text-sm text-slate-500 mt-0.5">등록된 모니터링 디바이스</p>
+        <h1 className="text-xl font-semibold text-ink">Devices</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">등록된 모니터링 디바이스</p>
       </div>
 
       {!devices ? (
-        <p className="text-slate-500 text-sm">로딩 중...</p>
+        <p className="text-ink-muted/60 text-sm">로딩 중...</p>
       ) : devices.length === 0 ? (
-        <p className="text-slate-500 text-sm">등록된 디바이스가 없습니다.</p>
+        <p className="text-ink-muted/60 text-sm">등록된 디바이스가 없습니다.</p>
       ) : (
         <div className="grid grid-cols-2 gap-4">
           {devices.map(d => {
@@ -57,12 +57,12 @@ export default function DevicesPage() {
               <Link
                 key={d.host_ip}
                 href={`/devices/${encodeURIComponent(d.host_ip)}`}
-                className="block bg-surface-card border border-surface-border rounded-xl p-5 hover:border-blue-500/50 hover:bg-slate-800/60 transition-colors"
+                className="block bg-surface-card border border-surface-border rounded-xl p-5 hover:border-accent/30 hover:bg-surface-card/60 transition-colors"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
-                    <p className="font-mono text-slate-100 font-semibold">{d.host_ip}</p>
+                    <p className="font-mono text-ink font-semibold">{d.host_ip}</p>
                   </div>
                   <div className="flex gap-1.5">
                     {downCnt > 0 && (
@@ -85,13 +85,13 @@ export default function DevicesPage() {
 
                 <div className="flex flex-wrap gap-2">
                   {d.sensor_types.map(t => (
-                    <span key={t} className="rounded bg-slate-700/60 text-slate-300 text-xs px-2.5 py-1">
+                    <span key={t} className="rounded bg-surface-border/40 text-ink/70 text-xs px-2.5 py-1">
                       {TYPE_LABEL[t] ?? t}
                     </span>
                   ))}
                 </div>
 
-                <p className="text-xs text-slate-500 mt-3">
+                <p className="text-xs text-ink-muted/60 mt-3">
                   {statuses.length}개 센서 · 클릭하여 상세 보기
                 </p>
               </Link>

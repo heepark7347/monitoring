@@ -8,7 +8,7 @@ const STATUS_CFG: Record<SensorStatus, { label: string; color: string; ring: str
   up:      { label: 'Up',      color: 'text-emerald-400', ring: 'border-emerald-500/40 bg-emerald-900/20' },
   down:    { label: 'Down',    color: 'text-red-400',     ring: 'border-red-500/40     bg-red-900/20'     },
   warning: { label: 'Warning', color: 'text-amber-400',   ring: 'border-amber-500/40  bg-amber-900/20'   },
-  pause:   { label: 'Pause',   color: 'text-slate-400',   ring: 'border-slate-600/40  bg-slate-800/30'   },
+  pause:   { label: 'Pause',   color: 'text-ink-muted',   ring: 'border-surface-border/25  bg-surface-card/30'   },
 }
 
 const LEGEND = [
@@ -25,8 +25,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-0.5">전체 센서 상태 요약</p>
+        <h1 className="text-xl font-semibold text-ink">Dashboard</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">전체 센서 상태 요약</p>
       </div>
 
       {/* 도넛 차트 + 범례 */}
@@ -49,8 +49,8 @@ export default function DashboardPage() {
             return (
               <div key={status} className="flex items-center gap-4">
                 <span className={`h-3 w-3 rounded-full flex-shrink-0 ${dot}`} />
-                <span className="text-sm text-slate-400 w-20">{cfg.label}</span>
-                <div className="flex-1 h-1.5 bg-slate-700/60 rounded-full overflow-hidden">
+                <span className="text-sm text-ink-muted w-20">{cfg.label}</span>
+                <div className="flex-1 h-1.5 bg-surface-border/40 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-500 ${dot}`}
                     style={{ width: `${pct}%` }}
@@ -75,7 +75,7 @@ export default function DashboardPage() {
                 <p className={`text-xs font-semibold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</p>
               </div>
               <p className={`text-4xl font-bold font-mono ${cfg.color}`}>{count}</p>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-ink-muted/60 mt-1">
                 {c?.total ? `전체의 ${Math.round((count / c.total) * 100)}%` : '—'}
               </p>
             </div>
@@ -83,8 +83,8 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <p className="text-xs text-slate-600 text-right">
-        총 <span className="text-slate-400">{c?.total ?? 0}</span>개 센서 · 30초마다 갱신
+      <p className="text-xs text-ink-faint text-right">
+        총 <span className="text-ink-muted">{c?.total ?? 0}</span>개 센서 · 30초마다 갱신
       </p>
     </div>
   )

@@ -5,10 +5,10 @@ import { fetcher, poster, api } from '@/lib/api'
 import type { DashboardSummary, Sensor, SensorStatus } from '@/lib/types'
 
 const STATUS_CFG: Record<SensorStatus, { label: string; dot: string; text: string; row: string; tab: string; tabActive: string }> = {
-  up:      { label: 'UP',      dot: 'bg-emerald-400', text: 'text-emerald-400', row: 'border-slate-700/50',           tab: 'text-slate-400 hover:text-emerald-300', tabActive: 'border-emerald-500 text-emerald-400' },
-  down:    { label: 'DOWN',    dot: 'bg-red-400',     text: 'text-red-400',     row: 'border-red-500/30 bg-red-900/10',     tab: 'text-slate-400 hover:text-red-300',     tabActive: 'border-red-500     text-red-400'     },
-  warning: { label: 'WARNING', dot: 'bg-amber-400',   text: 'text-amber-400',   row: 'border-amber-500/30 bg-amber-900/10', tab: 'text-slate-400 hover:text-amber-300',   tabActive: 'border-amber-500   text-amber-400'   },
-  pause:   { label: 'PAUSE',   dot: 'bg-slate-500',   text: 'text-slate-400',   row: 'border-slate-600/40 bg-slate-800/30', tab: 'text-slate-400 hover:text-slate-200',   tabActive: 'border-slate-400   text-slate-300'   },
+  up:      { label: 'UP',      dot: 'bg-emerald-400', text: 'text-emerald-400', row: 'border-surface-border/30',           tab: 'text-ink-muted hover:text-emerald-300', tabActive: 'border-emerald-500 text-emerald-400' },
+  down:    { label: 'DOWN',    dot: 'bg-red-400',     text: 'text-red-400',     row: 'border-red-500/30 bg-red-900/10',     tab: 'text-ink-muted hover:text-red-300',     tabActive: 'border-red-500     text-red-400'     },
+  warning: { label: 'WARNING', dot: 'bg-amber-400',   text: 'text-amber-400',   row: 'border-amber-500/30 bg-amber-900/10', tab: 'text-ink-muted hover:text-amber-300',   tabActive: 'border-amber-500   text-amber-400'   },
+  pause:   { label: 'PAUSE',   dot: 'bg-slate-500',   text: 'text-ink-muted',   row: 'border-surface-border/25 bg-surface-card/30', tab: 'text-ink-muted hover:text-ink/85',   tabActive: 'border-slate-400   text-ink/70'   },
 }
 
 const STATUS_ORDER: SensorStatus[] = ['up', 'down', 'warning', 'pause']
@@ -32,18 +32,18 @@ function SensorRow({ sensor, onPause, onResume }: {
   return (
     <div className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${cfg.row}`}>
       <span className={`h-2 w-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-      <span className="text-xs text-slate-500 w-16">{TYPE_CFG[sensor.type].label}</span>
-      <span className="flex-1 text-sm text-slate-200 font-mono">{sensor.name}</span>
-      <span className="text-xs text-slate-500 font-mono hidden md:block">{sensor.host_ip}</span>
+      <span className="text-xs text-ink-muted/60 w-16">{TYPE_CFG[sensor.type].label}</span>
+      <span className="flex-1 text-sm text-ink/85 font-mono">{sensor.name}</span>
+      <span className="text-xs text-ink-muted/60 font-mono hidden md:block">{sensor.host_ip}</span>
       {sensor.detail && (
-        <span className="text-xs text-slate-400 hidden lg:block max-w-xs truncate">{sensor.detail}</span>
+        <span className="text-xs text-ink-muted hidden lg:block max-w-xs truncate">{sensor.detail}</span>
       )}
       <button
         onClick={() => isPaused ? onResume(sensor.key) : onPause(sensor.key)}
         className={`flex-shrink-0 rounded px-3 py-1 text-xs font-medium transition-colors ${
           isPaused
             ? 'bg-emerald-700/40 text-emerald-300 hover:bg-emerald-700/60'
-            : 'bg-slate-700/60 text-slate-300 hover:bg-slate-600/60'
+            : 'bg-surface-border/40 text-ink/70 hover:bg-slate-600/60'
         }`}
       >
         {isPaused ? '재개' : '일시정지'}
@@ -63,9 +63,9 @@ function TypeSection({ type, sensors, onPause, onResume }: {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-slate-500 text-sm">{cfg.icon}</span>
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{cfg.label}</h3>
-        <span className="text-xs text-slate-600">{sensors.length}</span>
+        <span className="text-ink-muted/60 text-sm">{cfg.icon}</span>
+        <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider">{cfg.label}</h3>
+        <span className="text-xs text-ink-faint">{sensors.length}</span>
       </div>
       <div className="space-y-1.5">
         {sensors.map(s => (
@@ -100,8 +100,8 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Alerts</h1>
-        <p className="text-sm text-slate-500 mt-0.5">전체 센서 상태 · 종류별</p>
+        <h1 className="text-xl font-semibold text-ink">Alerts</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">전체 센서 상태 · 종류별</p>
       </div>
 
       {/* 상태 탭 */}
@@ -121,7 +121,7 @@ export default function AlertsPage() {
               <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
               {cfg.label}
               <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${
-                active ? 'bg-slate-700 text-slate-200' : 'bg-slate-800 text-slate-500'
+                active ? 'bg-surface-border/60 text-ink/85' : 'bg-surface-card text-ink-muted/60'
               }`}>
                 {count}
               </span>

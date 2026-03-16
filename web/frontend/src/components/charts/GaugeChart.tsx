@@ -32,11 +32,16 @@ export default function GaugeChart({
     const r  = size * 0.38
     const arc = d3.arc()
 
+    const style = getComputedStyle(document.documentElement)
+    const cText    = style.getPropertyValue('--c-text').trim()
+    const cMuted   = style.getPropertyValue('--c-muted').trim()
+    const cBorder  = style.getPropertyValue('--c-border').trim()
+
     // 배경 트랙
     svg.append('path')
       .attr('transform', `translate(${cx},${cy})`)
       .attr('d', arc({ innerRadius: r - 14, outerRadius: r, startAngle: -Math.PI * 0.75, endAngle: Math.PI * 0.75 }) as string)
-      .attr('fill', '#334155')
+      .attr('fill', `rgb(${cBorder})`)
 
     const pct = Math.min(value / max, 1)
     const color =
@@ -59,16 +64,17 @@ export default function GaugeChart({
       .attr('font-size', size * 0.18)
       .attr('font-weight', 'bold')
       .attr('font-family', 'monospace')
-      .attr('fill', '#f1f5f9')
+      .attr('fill', `rgb(${cText})`)
       .text(`${Math.round(value)}`)
 
     svg.append('text')
       .attr('x', cx).attr('y', cy + 8 + size * 0.13)
       .attr('text-anchor', 'middle')
       .attr('font-size', size * 0.1)
-      .attr('fill', '#64748b')
+      .attr('fill', `rgb(${cMuted})`)
       .text(unit)
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, max, unit, size, thresholds])
 
   return <svg ref={ref} width={size} height={size} style={{ display: 'block' }} />

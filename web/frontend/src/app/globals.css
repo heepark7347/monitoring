@@ -2,7 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Dark (Cyberpunk default) ─────────────────────────────────── */
+:root {
+  --c-bg:          11 14 20;      /* #0B0E14 */
+  --c-card:        15 19 28;      /* #0F131C */
+  --c-border:      26 38 30;      /* #1A261E */
+  --c-text:        180 220 200;   /* #B4DCC8 */
+  --c-muted:       80 120 100;    /* #507864 */
+  --c-faint:       30 50 40;      /* #1E3228 */
+  --c-accent:      0 255 65;      /* #00FF41 */
+  --c-accent-glow: 0 255 65;
+}
+
+/* ── Light mode ───────────────────────────────────────────────── */
+[data-theme="light"] {
+  --c-bg:          242 248 244;   /* #F2F8F4 */
+  --c-card:        255 255 255;   /* #FFFFFF */
+  --c-border:      200 225 210;   /* #C8E1D2 */
+  --c-text:        11 30 20;      /* #0B1E14 */
+  --c-muted:       60 110 80;     /* #3C6E50 */
+  --c-faint:       170 205 185;   /* #AACDB9 */
+  --c-accent:      0 160 45;      /* #00A02D */
+  --c-accent-glow: 0 160 45;
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
-  background-color: #0f172a;
-  color: #f1f5f9;
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-text));
+  font-family: var(--font-mono), 'JetBrains Mono', 'Courier New', monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Custom scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar             { width: 4px; height: 4px; }
+::-webkit-scrollbar-track       { background: rgb(var(--c-bg)); }
+::-webkit-scrollbar-thumb       { background: rgb(var(--c-accent) / 0.35); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-accent) / 0.6); }
+
+/* ── Accent glow utilities ────────────────────────────────────── */
+.accent-glow {
+  box-shadow: 0 0 10px rgb(var(--c-accent) / 0.3), 0 0 24px rgb(var(--c-accent) / 0.08);
+}
+.text-glow { text-shadow: 0 0 8px rgb(var(--c-accent) / 0.55); }
+
+/* ── Input ────────────────────────────────────────────────────── */
+input { font-family: inherit; }
+input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px rgb(var(--c-accent) / 0.5), 0 0 8px rgb(var(--c-accent) / 0.12);
 }

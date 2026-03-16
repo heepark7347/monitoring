@@ -19,7 +19,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button
       onClick={() => onChange(!on)}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        on ? 'bg-blue-600' : 'bg-slate-600'
+        on ? 'bg-accent' : 'bg-slate-600'
       }`}
     >
       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
@@ -37,12 +37,12 @@ function SensorRow({ sensor, onToggle }: {
   return (
     <div className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border text-sm transition-colors ${
       sensor.enabled
-        ? 'border-slate-700/60 bg-slate-800/30'
-        : 'border-slate-800/40 bg-slate-900/20 opacity-50'
+        ? 'border-surface-border/50/60 bg-surface-card/30'
+        : 'border-slate-800/40 bg-surface/20 opacity-50'
     }`}>
-      <span className="text-slate-500 w-4 text-center">{TYPE_ICON[sensor.sensor_type]}</span>
-      <span className="text-slate-400 w-16 text-xs">{TYPE_LABEL[sensor.sensor_type]}</span>
-      <span className="flex-1 font-mono text-slate-200 text-xs">{sensor.sensor_name}</span>
+      <span className="text-ink-muted/60 w-4 text-center">{TYPE_ICON[sensor.sensor_type]}</span>
+      <span className="text-ink-muted w-16 text-xs">{TYPE_LABEL[sensor.sensor_type]}</span>
+      <span className="flex-1 font-mono text-ink/85 text-xs">{sensor.sensor_name}</span>
       <Toggle on={sensor.enabled} onChange={v => onToggle(sensor.id, v)} />
     </div>
   )
@@ -94,9 +94,9 @@ function DeviceCard({
       <div className="flex items-center gap-3 px-5 py-4 border-b border-surface-border">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <span className="font-mono text-slate-300 text-sm">{device.host_ip}</span>
+            <span className="font-mono text-ink/70 text-sm">{device.host_ip}</span>
             {isPreset && (
-              <span className="text-xs bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded px-1.5 py-0.5">
+              <span className="text-xs bg-accent/10 text-accent border border-accent/20 rounded px-1.5 py-0.5">
                 기본 등록
               </span>
             )}
@@ -110,30 +110,30 @@ function DeviceCard({
                 value={name}
                 onChange={e => setName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }}
-                className="bg-slate-700 border border-slate-500 rounded px-2 py-0.5 text-sm text-slate-100 outline-none w-48"
+                className="bg-surface-border/60 border border-slate-500 rounded px-2 py-0.5 text-sm text-ink outline-none w-48"
                 placeholder="장비명 입력"
               />
-              <button onClick={saveName} className="text-xs text-blue-400 hover:text-blue-300">저장</button>
+              <button onClick={saveName} className="text-xs text-accent hover:text-accent/80">저장</button>
               <button onClick={() => { setName(device.display_name); setEditingName(false) }}
-                className="text-xs text-slate-500 hover:text-slate-300">취소</button>
+                className="text-xs text-ink-muted/60 hover:text-ink/70">취소</button>
             </div>
           ) : (
             <button
               onClick={() => setEditingName(true)}
-              className="text-sm text-slate-400 hover:text-slate-200 transition-colors mt-0.5 flex items-center gap-1.5"
+              className="text-sm text-ink-muted hover:text-ink/85 transition-colors mt-0.5 flex items-center gap-1.5"
             >
-              {device.display_name || <span className="italic text-slate-600">장비명 없음</span>}
-              <span className="text-xs text-slate-600">✎</span>
+              {device.display_name || <span className="italic text-ink-faint">장비명 없음</span>}
+              <span className="text-xs text-ink-faint">✎</span>
             </button>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">{enabledCnt}/{totalCnt} 센서 활성</span>
+          <span className="text-xs text-ink-muted/60">{enabledCnt}/{totalCnt} 센서 활성</span>
           <button
             onClick={discover}
             disabled={discovering}
-            className="text-xs bg-slate-700/60 hover:bg-slate-600/60 text-slate-300 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+            className="text-xs bg-surface-border/40 hover:bg-slate-600/60 text-ink/70 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
           >
             {discovering ? '탐색 중...' : '센서 갱신'}
           </button>
@@ -151,9 +151,9 @@ function DeviceCard({
       {/* 센서 목록 */}
       <div className="p-4 space-y-1.5">
         {!sensors ? (
-          <p className="text-xs text-slate-600 py-2 text-center">로딩 중...</p>
+          <p className="text-xs text-ink-faint py-2 text-center">로딩 중...</p>
         ) : sensors.length === 0 ? (
-          <p className="text-xs text-slate-600 py-2 text-center">
+          <p className="text-xs text-ink-faint py-2 text-center">
             발견된 센서가 없습니다. 수집 데이터가 있으면 &apos;센서 갱신&apos;을 눌러주세요.
           </p>
         ) : (
@@ -195,7 +195,7 @@ function AddDeviceForm({ onAdded }: { onAdded: () => void }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-lg border border-dashed border-slate-600 px-4 py-3 text-sm text-slate-400 hover:border-blue-500/50 hover:text-blue-400 transition-colors w-full"
+        className="flex items-center gap-2 rounded-lg border border-dashed border-surface-border/40 px-4 py-3 text-sm text-ink-muted hover:border-accent/30 hover:text-accent transition-colors w-full"
       >
         <span className="text-lg leading-none">+</span>
         장비 추가
@@ -204,43 +204,43 @@ function AddDeviceForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <div className="bg-surface-card border border-blue-500/30 rounded-xl p-5 space-y-4">
-      <p className="text-sm font-semibold text-slate-200">새 장비 등록</p>
+    <div className="bg-surface-card border border-accent/20 rounded-xl p-5 space-y-4">
+      <p className="text-sm font-semibold text-ink/85">새 장비 등록</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-slate-500 block mb-1">IP 주소 *</label>
+          <label className="text-xs text-ink-muted/60 block mb-1">IP 주소 *</label>
           <input
             value={hostIp}
             onChange={e => setHostIp(e.target.value)}
             placeholder="예) 192.168.0.1"
-            className="w-full bg-slate-700/60 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-500 font-mono"
+            className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent font-mono"
           />
         </div>
         <div>
-          <label className="text-xs text-slate-500 block mb-1">장비명</label>
+          <label className="text-xs text-ink-muted/60 block mb-1">장비명</label>
           <input
             value={dispName}
             onChange={e => setDispName(e.target.value)}
             placeholder="예) 서울-서버-01"
-            className="w-full bg-slate-700/60 border border-slate-600 rounded px-3 py-2 text-sm text-slate-100 outline-none focus:border-blue-500"
+            className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           />
         </div>
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-muted/60">
         해당 IP의 수집 데이터가 DB에 있어야 등록할 수 있습니다. 등록 후 센서가 자동으로 발견됩니다.
       </p>
       <div className="flex gap-2">
         <button
           onClick={submit}
           disabled={loading || !hostIp.trim()}
-          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm px-4 py-2 rounded transition-colors"
+          className="bg-accent hover:bg-accent/80 disabled:opacity-50 text-white text-sm px-4 py-2 rounded transition-colors"
         >
           {loading ? '등록 중...' : '등록'}
         </button>
         <button
           onClick={() => { setOpen(false); setHostIp(''); setDispName(''); setError('') }}
-          className="text-sm text-slate-400 hover:text-slate-200 px-4 py-2"
+          className="text-sm text-ink-muted hover:text-ink/85 px-4 py-2"
         >
           취소
         </button>
@@ -263,13 +263,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Settings</h1>
-        <p className="text-sm text-slate-500 mt-0.5">장비 및 센서 관리</p>
+        <h1 className="text-xl font-semibold text-ink">Settings</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">장비 및 센서 관리</p>
       </div>
 
       <div className="space-y-4">
         {!devices ? (
-          <p className="text-sm text-slate-500">로딩 중...</p>
+          <p className="text-sm text-ink-muted/60">로딩 중...</p>
         ) : (
           devices.map(d => (
             <DeviceCard

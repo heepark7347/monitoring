@@ -51,17 +51,17 @@ export default function DeviceDetailPage() {
   return (
     <div className="space-y-5">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Link href="/devices" className="hover:text-slate-300 transition-colors">Devices</Link>
+      <div className="flex items-center gap-2 text-sm text-ink-muted/60">
+        <Link href="/devices" className="hover:text-ink/70 transition-colors">Devices</Link>
         <span>/</span>
-        <span className="text-slate-200 font-mono">{hostIp}</span>
+        <span className="text-ink/85 font-mono">{hostIp}</span>
       </div>
 
       {/* Device header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className={`h-3 w-3 rounded-full ${STATUS_DOT[status]}`} />
-          <h1 className="text-xl font-semibold text-slate-100 font-mono">{hostIp}</h1>
+          <h1 className="text-xl font-semibold text-ink font-mono">{hostIp}</h1>
           <div className="flex gap-1.5">
             {downCnt > 0 && (
               <span className="rounded-full bg-red-600/30 text-red-300 text-xs px-2 py-0.5 font-semibold">DOWN {downCnt}</span>
@@ -84,8 +84,8 @@ export default function DeviceDetailPage() {
             onClick={() => setTab(t.key)}
             className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               tab === t.key
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-accent text-accent'
+                : 'border-transparent text-ink-muted hover:text-ink/85'
             }`}
           >
             {t.label}

@@ -17,8 +17,8 @@ export default function TimeRangePicker({ value, onChange }: Props) {
           onClick={() => onChange(opt)}
           className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
             value === opt
-              ? 'bg-blue-600 text-white'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+              ? 'bg-accent text-white'
+              : 'text-ink-muted hover:text-ink/85 hover:bg-surface-border/30'
           }`}
         >
           {opt}

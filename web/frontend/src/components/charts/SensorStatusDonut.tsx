@@ -38,17 +38,22 @@ export default function SensorStatusDonut({ up, down, warning, pause, size = 200
     const innerR = outerR - size * 0.12
     const segs   = SEGMENTS(up, down, warning, pause).filter(s => s.value > 0)
 
+    const style  = getComputedStyle(document.documentElement)
+    const cBorder = style.getPropertyValue('--c-border').trim()
+    const cText   = style.getPropertyValue('--c-text').trim()
+    const cMuted  = style.getPropertyValue('--c-muted').trim()
+
     if (total === 0) {
       // 빈 링
       svg.append('circle')
         .attr('cx', cx).attr('cy', cy)
         .attr('r', outerR).attr('fill', 'none')
-        .attr('stroke', '#334155').attr('stroke-width', size * 0.12)
+        .attr('stroke', `rgb(${cBorder})`).attr('stroke-width', size * 0.12)
       svg.append('text')
         .attr('x', cx).attr('y', cy + 5)
         .attr('text-anchor', 'middle')
         .attr('font-size', size * 0.14).attr('font-family', 'monospace')
-        .attr('fill', '#64748b')
+        .attr('fill', `rgb(${cMuted})`)
         .text('—')
       return
     }
@@ -64,7 +69,7 @@ export default function SensorStatusDonut({ up, down, warning, pause, size = 200
       .enter().append('path')
       .attr('d', arc)
       .attr('fill', d => d.data.color)
-      .attr('stroke', '#0f172a')
+      .attr('stroke', `rgb(var(--c-bg))`)
       .attr('stroke-width', 1.5)
 
     // 중앙 텍스트
@@ -72,13 +77,13 @@ export default function SensorStatusDonut({ up, down, warning, pause, size = 200
       .attr('x', cx).attr('y', cy - size * 0.05)
       .attr('text-anchor', 'middle')
       .attr('font-size', size * 0.2).attr('font-weight', 'bold').attr('font-family', 'monospace')
-      .attr('fill', '#f1f5f9')
+      .attr('fill', `rgb(${cText})`)
       .text(total)
 
     svg.append('text')
       .attr('x', cx).attr('y', cy + size * 0.1)
       .attr('text-anchor', 'middle')
-      .attr('font-size', size * 0.08).attr('fill', '#64748b')
+      .attr('font-size', size * 0.08).attr('fill', `rgb(${cMuted})`)
       .text('sensors')
   }, [up, down, warning, pause, size, total])
 
