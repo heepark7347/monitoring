@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from ..database import get_conn, fetchall_as_dict
 
 router = APIRouter()
@@ -96,6 +96,7 @@ def get_summary():
             cur.execute("""
                 SELECT DISTINCT ON (host_ip, if_descr)
                     host_ip, if_descr, if_oper_status,
+                    if_in_octets_rate, if_out_octets_rate,
                     if_in_errors_rate, if_out_errors_rate, collected_at
                 FROM snmp_interface_metrics
                 ORDER BY host_ip, if_descr, collected_at DESC
@@ -106,7 +107,8 @@ def get_summary():
             # Node
             cur.execute("""
                 SELECT DISTINCT ON (host_ip)
-                    host_ip, cpu_usage_percent, memory_usage_percent, collected_at
+                    host_ip, cpu_usage_percent, memory_usage_percent,
+                    uptime_seconds, collected_at
                 FROM node_metrics
                 ORDER BY host_ip, collected_at DESC
             """)
@@ -238,15 +240,28 @@ def get_summary():
             alerts.append({**s, 'detail': f"사용률 {pct:.1f}%"})
 
     # ── Network ───────────────────────────────────────────────────
+    def _fmt_bps(bps: float) -> str:
+        if bps >= 1024 * 1024:
+            return f"{bps/1024/1024:.1f}MB/s"
+        if bps >= 1024:
+            return f"{bps/1024:.1f}kB/s"
+        return f"{bps:.0f}B/s"
+
     for r in net_rows:
         key   = f"{r['host_ip']}:network:{r['if_descr']}"
         oper  = r.get('if_oper_status') or 1
         in_e  = float(r.get('if_in_errors_rate') or 0)
         out_e = float(r.get('if_out_errors_rate') or 0)
+        in_r  = float(r.get('if_in_octets_rate') or 0)
+        out_r = float(r.get('if_out_octets_rate') or 0)
         stale = _is_stale(r.get('collected_at'))
         st    = _sensor_status(key, paused,
                                down=stale or oper != 1,
                                warn=in_e > NET_ERR_WARN or out_e > NET_ERR_WARN)
+        if oper != 1:
+            detail = 'Interface Down'
+        else:
+            detail = f"↓{_fmt_bps(in_r)} ↑{_fmt_bps(out_r)}"
         s = {
             'key':         key,
             'host_ip':     r['host_ip'],
@@ -254,37 +269,82 @@ def get_summary():
             'sensor_name': r['if_descr'],
             'name':        r['if_descr'],
             'status':      st,
-            'detail':      'Interface Down' if oper != 1 else f"Err {in_e+out_e:.3f}pps",
-        }
-        sensors.append(s)
-        if st in ('down', 'warning'):
-            detail = 'Interface Down' if oper != 1 else f"Err in={in_e:.3f} out={out_e:.3f}pps"
-            alerts.append({**s, 'detail': detail})
-
-    # ── Node ──────────────────────────────────────────────────────
-    for r in node_rows:
-        key   = f"{r['host_ip']}:node:system"
-        cpu   = float(r.get('cpu_usage_percent') or 0)
-        mem   = float(r.get('memory_usage_percent') or 0)
-        stale = _is_stale(r.get('collected_at'))
-        st    = _sensor_status(key, paused,
-                               down=stale or cpu >= NODE_DOWN_PCT or mem >= NODE_DOWN_PCT,
-                               warn=cpu >= NODE_WARN_PCT or mem >= NODE_WARN_PCT)
-        detail_parts = []
-        if cpu >= NODE_WARN_PCT: detail_parts.append(f"CPU {cpu:.1f}%")
-        if mem >= NODE_WARN_PCT: detail_parts.append(f"MEM {mem:.1f}%")
-        s = {
-            'key':         key,
-            'host_ip':     r['host_ip'],
-            'type':        'Node',
-            'sensor_name': 'system',
-            'name':        'System',
-            'status':      st,
-            'detail':      ', '.join(detail_parts) if detail_parts else f"CPU {cpu:.1f}% MEM {mem:.1f}%",
+            'detail':      detail,
         }
         sensors.append(s)
         if st in ('down', 'warning'):
             alerts.append(s)
+
+    # ── Node ──────────────────────────────────────────────────────
+    def _fmt_uptime(sec) -> str:
+        if not sec:
+            return '—'
+        sec = int(sec)
+        d = sec // 86400
+        h = (sec % 86400) // 3600
+        m = (sec % 3600) // 60
+        return f"{d}d {h}h {m}m"
+
+    for r in node_rows:
+        host_ip = r['host_ip']
+        cpu     = float(r.get('cpu_usage_percent') or 0)
+        mem     = float(r.get('memory_usage_percent') or 0)
+        uptime  = r.get('uptime_seconds')
+        stale   = _is_stale(r.get('collected_at'))
+
+        # CPU sensor
+        cpu_key = f"{host_ip}:node:cpu"
+        cpu_st  = _sensor_status(cpu_key, paused,
+                                 down=stale or cpu >= NODE_DOWN_PCT,
+                                 warn=cpu >= NODE_WARN_PCT)
+        s_cpu = {
+            'key':         cpu_key,
+            'host_ip':     host_ip,
+            'type':        'Node',
+            'sensor_name': 'cpu',
+            'name':        'CPU Utilization',
+            'status':      cpu_st,
+            'detail':      f"{cpu:.1f}%",
+        }
+        sensors.append(s_cpu)
+        if cpu_st in ('down', 'warning'):
+            alerts.append(s_cpu)
+
+        # Memory sensor
+        mem_key = f"{host_ip}:node:memory"
+        mem_st  = _sensor_status(mem_key, paused,
+                                 down=stale or mem >= NODE_DOWN_PCT,
+                                 warn=mem >= NODE_WARN_PCT)
+        s_mem = {
+            'key':         mem_key,
+            'host_ip':     host_ip,
+            'type':        'Node',
+            'sensor_name': 'memory',
+            'name':        'Memory',
+            'status':      mem_st,
+            'detail':      f"{mem:.1f}%",
+        }
+        sensors.append(s_mem)
+        if mem_st in ('down', 'warning'):
+            alerts.append(s_mem)
+
+        # Uptime sensor
+        uptime_key = f"{host_ip}:node:uptime"
+        uptime_st  = _sensor_status(uptime_key, paused,
+                                    down=stale,
+                                    warn=False)
+        s_uptime = {
+            'key':         uptime_key,
+            'host_ip':     host_ip,
+            'type':        'Node',
+            'sensor_name': 'uptime',
+            'name':        'Uptime',
+            'status':      uptime_st,
+            'detail':      _fmt_uptime(uptime),
+        }
+        sensors.append(s_uptime)
+        if uptime_st in ('down', 'warning'):
+            alerts.append(s_uptime)
 
     # ── Connectivity (ICMP + Port) ─────────────────────────────────
     for r in conn_rows:

@@ -40,6 +40,11 @@ function fmtUptime(sec: number | null) {
   return `${d}d ${h}h ${m}m`
 }
 
+// MiB 또는 Bytes → GB 자동 변환 (1M 이상이면 bytes로 간주)
+function mbToGb(raw: number): number {
+  return raw > 1_000_000 ? raw / (1024 * 1024 * 1024) : raw / 1024
+}
+
 // ── GPU sensor detail ──────────────────────────────────────────
 function GpuSensorDetail({ hostIp, sensorName, range, setRange }: {
   hostIp: string; sensorName: string; range: TimeRange; setRange: (r: TimeRange) => void
@@ -232,10 +237,14 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
 
   const hist = (history as Record<string, unknown>[] ?? [])
 
-  const memUsedMb  = (gpu?.memory_used_mb  as number) ?? 0
-  const memFreeMb  = (gpu?.memory_free_mb  as number) ?? 0
-  const memTotalMb = memUsedMb + memFreeMb
-  const memPct     = memTotalMb > 0 ? (memUsedMb / memTotalMb) * 100 : 0
+  const memUsedRaw  = (gpu?.memory_used_mb  as number) ?? 0
+  const memFreeRaw  = (gpu?.memory_free_mb  as number) ?? 0
+  const memTotalRaw = memUsedRaw + memFreeRaw
+  const memPct      = memTotalRaw > 0 ? (memUsedRaw / memTotalRaw) * 100 : 0
+  const memUsedMb   = memUsedRaw  // keep alias for series
+  const memUsedGb   = mbToGb(memUsedRaw)
+  const memTotalGb  = mbToGb(memTotalRaw)
+  const memScale    = memUsedRaw > 1_000_000 ? 1/(1024*1024*1024) : 1/1024
   const utilPct    = (gpu?.gpu_utilization   as number) ?? 0
   const tempC      = (gpu?.temperature_celsius as number) ?? 0
   const powerW     = (gpu?.power_usage_watts as number) ?? 0
@@ -268,9 +277,12 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
       )}
 
       {/* 현재값 요약 카드 */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <MetricCard label="GPU Util"    value={utilPct.toFixed(1)} unit="%"
           accent={utilPct >= 98 ? 'text-red-400' : utilPct >= 90 ? 'text-amber-400' : 'text-emerald-400'} />
+        <MetricCard label="Memory Used" value={memUsedGb.toFixed(1)} unit=" GB"
+          sub={`/ ${memTotalGb.toFixed(1)} GB (${memPct.toFixed(1)}%)`}
+          accent={memPct >= 98 ? 'text-red-400' : memPct >= 85 ? 'text-amber-400' : 'text-emerald-400'} />
         <MetricCard label="Temperature" value={tempC.toFixed(1)}   unit="°C"
           accent={tempC >= 90 ? 'text-red-400' : tempC >= 80 ? 'text-amber-400' : 'text-emerald-400'} />
         <MetricCard label="Power"       value={powerW.toFixed(1)}  unit=" W" />
@@ -286,7 +298,7 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
           <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Memory Usage</p>
           <GaugeChart value={memPct} unit="%" thresholds={[85, 98]} />
-          <p className="text-xs text-ink-muted/60">{(memUsedMb/1024).toFixed(1)} GB / {(memTotalMb/1024).toFixed(1)} GB</p>
+          <p className="text-xs text-ink-muted/60">{memUsedGb.toFixed(1)} GB / {memTotalGb.toFixed(1)} GB</p>
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 space-y-4">
           <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Clock Speeds</p>
@@ -332,7 +344,7 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Memory Used</p>
-          <LineChart series={mkSeries('memory_used_mb', 'Mem GB', '#8b5cf6', 1/1024)} unit=" GB" />
+          <LineChart series={mkSeries('memory_used_mb', 'Mem GB', '#8b5cf6', memScale)} unit=" GB" />
         </div>
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Temperature</p>
@@ -412,35 +424,38 @@ function NetworkSensorDetail({ hostIp, sensorName, range, setRange }: {
     (i) => i.host_ip === hostIp && i.if_descr === sensorName
   ) as Record<string, number | string | null> | undefined
 
-  const inRate  = (iface?.if_in_octets_rate as number) ?? 0
-  const outRate = (iface?.if_out_octets_rate as number) ?? 0
-  const isUp    = (iface?.if_oper_status as number) === 1
+  const inRate   = (iface?.if_in_octets_rate  as number) ?? 0
+  const outRate  = (iface?.if_out_octets_rate as number) ?? 0
+  const totalRate = inRate + outRate
+  const isUp     = (iface?.if_oper_status as number) === 1
 
   const filteredHist = (history as Record<string, unknown>[] ?? [])
     .filter((h) => h.if_descr === sensorName)
 
   const traffSeries = [
-    { name: 'RX', color: '#3b82f6', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_in_octets_rate as number) ?? 0 })) },
-    { name: 'TX', color: '#10b981', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_out_octets_rate as number) ?? 0 })) },
+    { name: 'In',  color: '#3b82f6', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_in_octets_rate  as number) ?? 0 })) },
+    { name: 'Out', color: '#10b981', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_out_octets_rate as number) ?? 0 })) },
+    { name: 'Total', color: '#f59e0b', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: ((h.if_in_octets_rate as number) ?? 0) + ((h.if_out_octets_rate as number) ?? 0) })) },
   ]
   const errSeries = [
-    { name: 'RX Err', color: '#ef4444', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_in_errors_rate as number) ?? 0 })) },
+    { name: 'RX Err', color: '#ef4444', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_in_errors_rate  as number) ?? 0 })) },
     { name: 'TX Err', color: '#f59e0b', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.if_out_errors_rate as number) ?? 0 })) },
   ]
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-5">
           <p className="text-xs text-ink-muted/60">Link Status</p>
           <p className={`text-2xl font-bold font-mono mt-2 ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>{isUp ? 'UP' : 'DOWN'}</p>
           {iface?.if_speed_mbps != null && <p className="text-xs text-ink-muted/60 mt-1">{iface.if_speed_mbps} Mbps</p>}
         </div>
-        <MetricCard label="RX Rate" value={fmtRate(inRate)}  />
-        <MetricCard label="TX Rate" value={fmtRate(outRate)} />
+        <MetricCard label="In (RX)"    value={fmtRate(inRate)}    />
+        <MetricCard label="Out (TX)"   value={fmtRate(outRate)}   />
+        <MetricCard label="Total"      value={fmtRate(totalRate)} />
       </div>
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Traffic (B/s)</p>
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Traffic — In / Out / Total (B/s)</p>
         <LineChart series={traffSeries} unit=" B/s" />
       </div>
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
@@ -452,8 +467,8 @@ function NetworkSensorDetail({ hostIp, sensorName, range, setRange }: {
 }
 
 // ── Node sensor detail ─────────────────────────────────────────
-function NodeSensorDetail({ hostIp, range, setRange }: {
-  hostIp: string; range: TimeRange; setRange: (r: TimeRange) => void
+function NodeSensorDetail({ hostIp, sensorName, range, setRange }: {
+  hostIp: string; sensorName: string; range: TimeRange; setRange: (r: TimeRange) => void
 }) {
   const hours = rangeToHours(range)
   const { data: latest }  = useSWR(api.node.latest(), fetcher, { refreshInterval: 60000 })
@@ -463,35 +478,87 @@ function NodeSensorDetail({ hostIp, range, setRange }: {
     (n) => n.host_ip === hostIp
   ) as Record<string, number | string | null> | undefined
 
-  const cpuPct = (node?.cpu_usage_percent as number) ?? 0
-  const memPct = (node?.memory_usage_percent as number) ?? 0
+  const cpuPct   = (node?.cpu_usage_percent   as number) ?? 0
+  const memPct   = (node?.memory_usage_percent as number) ?? 0
+  const uptimeSec = node?.uptime_seconds as number | null
 
   const filteredHist = (history as Record<string, unknown>[] ?? [])
     .filter((h) => h.host_ip === hostIp)
 
-  const cpuSeries = [{
-    name: 'CPU %', color: '#3b82f6',
-    data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.cpu_usage_percent as number) ?? 0 })),
-  }]
-  const memSeries = [{
-    name: 'Memory %', color: '#8b5cf6',
-    data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.memory_usage_percent as number) ?? 0 })),
-  }]
+  const cpuSeries = [{ name: 'CPU %', color: '#3b82f6',
+    data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.cpu_usage_percent as number) ?? 0 })) }]
+  const memSeries = [{ name: 'Memory %', color: '#8b5cf6',
+    data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.memory_usage_percent as number) ?? 0 })) }]
   const loadSeries = [
     { name: '1m',  color: '#3b82f6', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.load_1m  as number) ?? 0 })) },
     { name: '5m',  color: '#10b981', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.load_5m  as number) ?? 0 })) },
     { name: '15m', color: '#f59e0b', data: filteredHist.map((h) => ({ t: new Date(h.collected_at as string), v: (h.load_15m as number) ?? 0 })) },
   ]
 
+  // CPU 서브타입
+  if (sensorName === 'cpu') return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-4">
+        <MetricCard label="CPU Usage" value={cpuPct.toFixed(1)} unit="%"
+          accent={cpuPct >= 95 ? 'text-red-400' : cpuPct >= 80 ? 'text-amber-400' : 'text-emerald-400'} />
+        <MetricCard label="Load 1m"  value={(node?.load_1m  as number)?.toFixed(2) ?? null} />
+        <MetricCard label="Load 5m"  value={(node?.load_5m  as number)?.toFixed(2) ?? null} />
+      </div>
+      <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider">CPU Utilization</p>
+        <GaugeChart value={cpuPct} unit="%" thresholds={[80, 95]} />
+      </div>
+      <div className="bg-surface-card border border-surface-border rounded-xl p-5">
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">CPU History</p>
+        <LineChart series={cpuSeries} unit="%" yMin={0} yMax={100} />
+      </div>
+      <div className="bg-surface-card border border-surface-border rounded-xl p-5">
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Load Average</p>
+        <LineChart series={loadSeries} unit="" />
+      </div>
+    </div>
+  )
+
+  // Memory 서브타입
+  if (sensorName === 'memory') return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-4">
+        <MetricCard label="Memory Usage" value={memPct.toFixed(1)} unit="%"
+          accent={memPct >= 95 ? 'text-red-400' : memPct >= 80 ? 'text-amber-400' : 'text-emerald-400'} />
+        <MetricCard label="Total"    value={fmtBytes(node?.memory_total_bytes     as number)} />
+        <MetricCard label="Available" value={fmtBytes(node?.memory_available_bytes as number)} />
+      </div>
+      <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Memory Usage</p>
+        <GaugeChart value={memPct} unit="%" thresholds={[80, 95]} />
+      </div>
+      <div className="bg-surface-card border border-surface-border rounded-xl p-5">
+        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Memory History</p>
+        <LineChart series={memSeries} unit="%" yMin={0} yMax={100} />
+      </div>
+    </div>
+  )
+
+  // Uptime 서브타입
+  if (sensorName === 'uptime') return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <MetricCard label="Uptime"    value={fmtUptime(uptimeSec)} />
+        <MetricCard label="Uptime (s)" value={uptimeSec ? Math.round(uptimeSec).toString() : null} unit=" s" />
+      </div>
+    </div>
+  )
+
+  // legacy 'system' — 전체 표시
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-4 gap-4">
-        <MetricCard label="CPU Usage"   value={cpuPct.toFixed(1)} unit="%"
+        <MetricCard label="CPU Usage"  value={cpuPct.toFixed(1)} unit="%"
           accent={cpuPct >= 95 ? 'text-red-400' : cpuPct >= 80 ? 'text-amber-400' : 'text-emerald-400'} />
-        <MetricCard label="Memory"      value={memPct.toFixed(1)} unit="%"
+        <MetricCard label="Memory"     value={memPct.toFixed(1)} unit="%"
           accent={memPct >= 95 ? 'text-red-400' : memPct >= 80 ? 'text-amber-400' : 'text-emerald-400'} />
-        <MetricCard label="Mem Total"   value={fmtBytes(node?.memory_total_bytes as number)} />
-        <MetricCard label="Uptime"      value={fmtUptime(node?.uptime_seconds as number)} />
+        <MetricCard label="Mem Total"  value={fmtBytes(node?.memory_total_bytes as number)} />
+        <MetricCard label="Uptime"     value={fmtUptime(uptimeSec)} />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col items-center gap-2">
@@ -620,7 +687,7 @@ export default function SensorDetailPage() {
     if (sensorType === 'network')
       return <NetworkSensorDetail hostIp={hostIp} sensorName={sensorName} range={range} setRange={setRange} />
     if (sensorType === 'node')
-      return <NodeSensorDetail hostIp={hostIp} range={range} setRange={setRange} />
+      return <NodeSensorDetail hostIp={hostIp} sensorName={sensorName} range={range} setRange={setRange} />
     if (sensorType === 'icmp' || sensorType === 'port')
       return <ConnSensorDetail hostIp={hostIp} sensorType={sensorType} sensorName={sensorName} range={range} setRange={setRange} />
     return <p className="text-ink-muted/60 text-sm">Unknown sensor type: {sensorType}</p>
