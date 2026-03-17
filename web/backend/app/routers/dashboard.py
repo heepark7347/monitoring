@@ -112,8 +112,9 @@ def get_summary():
                 FROM node_metrics
                 ORDER BY host_ip, collected_at DESC
             """)
+            _node_subs = ('system', 'cpu', 'memory', 'uptime')
             node_rows = [r for r in fetchall_as_dict(cur)
-                         if (r['host_ip'], 'node', 'system') in enabled]
+                         if any((r['host_ip'], 'node', s) in enabled for s in _node_subs)]
 
             # Connectivity (ICMP + Port)
             conn_rows = []
@@ -292,59 +293,65 @@ def get_summary():
         uptime  = r.get('uptime_seconds')
         stale   = _is_stale(r.get('collected_at'))
 
+        # legacy 'system' 등록도 cpu/memory/uptime 모두 emit
+        has_system = (host_ip, 'node', 'system') in enabled
+
         # CPU sensor
-        cpu_key = f"{host_ip}:node:cpu"
-        cpu_st  = _sensor_status(cpu_key, paused,
-                                 down=stale or cpu >= NODE_DOWN_PCT,
-                                 warn=cpu >= NODE_WARN_PCT)
-        s_cpu = {
-            'key':         cpu_key,
-            'host_ip':     host_ip,
-            'type':        'Node',
-            'sensor_name': 'cpu',
-            'name':        'CPU Utilization',
-            'status':      cpu_st,
-            'detail':      f"{cpu:.1f}%",
-        }
-        sensors.append(s_cpu)
-        if cpu_st in ('down', 'warning'):
-            alerts.append(s_cpu)
+        if has_system or (host_ip, 'node', 'cpu') in enabled:
+            cpu_key = f"{host_ip}:node:cpu"
+            cpu_st  = _sensor_status(cpu_key, paused,
+                                     down=stale or cpu >= NODE_DOWN_PCT,
+                                     warn=cpu >= NODE_WARN_PCT)
+            s_cpu = {
+                'key':         cpu_key,
+                'host_ip':     host_ip,
+                'type':        'Node',
+                'sensor_name': 'cpu',
+                'name':        'CPU Utilization',
+                'status':      cpu_st,
+                'detail':      f"{cpu:.1f}%",
+            }
+            sensors.append(s_cpu)
+            if cpu_st in ('down', 'warning'):
+                alerts.append(s_cpu)
 
         # Memory sensor
-        mem_key = f"{host_ip}:node:memory"
-        mem_st  = _sensor_status(mem_key, paused,
-                                 down=stale or mem >= NODE_DOWN_PCT,
-                                 warn=mem >= NODE_WARN_PCT)
-        s_mem = {
-            'key':         mem_key,
-            'host_ip':     host_ip,
-            'type':        'Node',
-            'sensor_name': 'memory',
-            'name':        'Memory',
-            'status':      mem_st,
-            'detail':      f"{mem:.1f}%",
-        }
-        sensors.append(s_mem)
-        if mem_st in ('down', 'warning'):
-            alerts.append(s_mem)
+        if has_system or (host_ip, 'node', 'memory') in enabled:
+            mem_key = f"{host_ip}:node:memory"
+            mem_st  = _sensor_status(mem_key, paused,
+                                     down=stale or mem >= NODE_DOWN_PCT,
+                                     warn=mem >= NODE_WARN_PCT)
+            s_mem = {
+                'key':         mem_key,
+                'host_ip':     host_ip,
+                'type':        'Node',
+                'sensor_name': 'memory',
+                'name':        'Memory',
+                'status':      mem_st,
+                'detail':      f"{mem:.1f}%",
+            }
+            sensors.append(s_mem)
+            if mem_st in ('down', 'warning'):
+                alerts.append(s_mem)
 
         # Uptime sensor
-        uptime_key = f"{host_ip}:node:uptime"
-        uptime_st  = _sensor_status(uptime_key, paused,
-                                    down=stale,
-                                    warn=False)
-        s_uptime = {
-            'key':         uptime_key,
-            'host_ip':     host_ip,
-            'type':        'Node',
-            'sensor_name': 'uptime',
-            'name':        'Uptime',
-            'status':      uptime_st,
-            'detail':      _fmt_uptime(uptime),
-        }
-        sensors.append(s_uptime)
-        if uptime_st in ('down', 'warning'):
-            alerts.append(s_uptime)
+        if has_system or (host_ip, 'node', 'uptime') in enabled:
+            uptime_key = f"{host_ip}:node:uptime"
+            uptime_st  = _sensor_status(uptime_key, paused,
+                                        down=stale,
+                                        warn=False)
+            s_uptime = {
+                'key':         uptime_key,
+                'host_ip':     host_ip,
+                'type':        'Node',
+                'sensor_name': 'uptime',
+                'name':        'Uptime',
+                'status':      uptime_st,
+                'detail':      _fmt_uptime(uptime),
+            }
+            sensors.append(s_uptime)
+            if uptime_st in ('down', 'warning'):
+                alerts.append(s_uptime)
 
     # ── Connectivity (ICMP + Port) ─────────────────────────────────
     for r in conn_rows:

@@ -104,11 +104,9 @@ def available_sensors(host_ip: str):
                 for suffix in GPU_METRIC_SUFFIXES:
                     result.append({"sensor_type": "gpu", "sensor_name": f"{idx}_{suffix}"})
 
-            # Node — 3 sub-sensors
-            cur.execute("SELECT 1 FROM node_metrics WHERE host_ip = %s LIMIT 1", (host_ip,))
-            if cur.fetchone():
-                for sub in ("cpu", "memory", "uptime"):
-                    result.append({"sensor_type": "node", "sensor_name": sub})
+            # Node — 에이전트 연결 여부와 무관하게 항상 3개 제공
+            for sub in ("cpu", "memory", "uptime"):
+                result.append({"sensor_type": "node", "sensor_name": sub})
 
             # Disk
             cur.execute(
@@ -136,11 +134,17 @@ def available_sensors(host_ip: str):
             )
             registered = {(r[0], r[1]): r[2] for r in cur.fetchall()}
 
+    # legacy 'system' 등록 시 cpu/memory/uptime도 registered로 표시
+    has_legacy_system = ('node', 'system') in registered
+
     for item in result:
         key = (item["sensor_type"], item["sensor_name"])
         if key in registered:
             item["registered"] = True
             item["config_id"]  = registered[key]
+        elif has_legacy_system and item["sensor_type"] == "node" and item["sensor_name"] in ("cpu", "memory", "uptime"):
+            item["registered"] = True
+            item["config_id"]  = registered[('node', 'system')]
         else:
             item["registered"] = False
             item["config_id"]  = None
