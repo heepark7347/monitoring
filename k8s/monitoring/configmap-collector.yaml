@@ -185,6 +185,7 @@ data:
     );
     CREATE INDEX IF NOT EXISTS idx_conn_metrics_time ON connectivity_metrics(collected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_conn_metrics_host ON connectivity_metrics(host_ip, sensor_type, sensor_name);
+    ALTER TABLE connectivity_metrics ADD COLUMN IF NOT EXISTS packet_loss_pct FLOAT;
 
     CREATE TABLE IF NOT EXISTS registered_devices (
         id           SERIAL PRIMARY KEY,
@@ -554,21 +555,30 @@ data:
         now     = datetime.now(timezone.utc)
         results = []
         for (host_ip, sensor_type, sensor_name) in rows:
-            is_reachable = False
-            latency_ms   = None
-            error_msg    = None
+            is_reachable    = False
+            latency_ms      = None
+            error_msg       = None
+            packet_loss_pct = None
             try:
                 if sensor_type == 'icmp':
                     result = subprocess.run(
-                        ['ping', '-c', '1', '-W', '2', host_ip],
-                        capture_output=True, timeout=5
+                        ['ping', '-c', '5', '-W', '2', host_ip],
+                        capture_output=True, timeout=15
                     )
+                    out = result.stdout.decode()
                     is_reachable = result.returncode == 0
-                    if is_reachable:
-                        m = re.search(r'time=([\d.]+)', result.stdout.decode())
+                    # avg latency from rtt min/avg/max line
+                    avg_m = re.search(r'rtt min/avg/max[^=]*= [\d.]+/([\d.]+)/', out)
+                    if avg_m:
+                        latency_ms = float(avg_m.group(1))
+                    elif is_reachable:
+                        m = re.search(r'time=([\d.]+)', out)
                         latency_ms = float(m.group(1)) if m else None
-                    else:
-                        error_msg = 'ICMP unreachable'
+                    # packet loss %
+                    loss_m = re.search(r'(\d+)% packet loss', out)
+                    packet_loss_pct = float(loss_m.group(1)) if loss_m else (100.0 if not is_reachable else 0.0)
+                    if not is_reachable:
+                        error_msg = f"packet loss {packet_loss_pct:.0f}%"
                 elif sensor_type == 'port':
                     port = int(sensor_name)
                     start = time.time()
@@ -582,14 +592,15 @@ data:
             except Exception as e:
                 error_msg = str(e)[:200]
 
-            results.append((now, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg))
+            results.append((now, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg,
+                            packet_loss_pct if sensor_type == 'icmp' else None))
 
         conn = get_db_conn()
         with conn:
             with conn.cursor() as cur:
                 execute_values(cur, """
                     INSERT INTO connectivity_metrics
-                        (collected_at, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg)
+                        (collected_at, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg, packet_loss_pct)
                     VALUES %s
                 """, results)
         conn.close()

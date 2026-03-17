@@ -624,9 +624,11 @@ function ConnSensorDetail({ hostIp, sensorType, sensorName, range, setRange }: {
   const upPct     = totalCnt > 0 ? ((upCount / totalCnt) * 100).toFixed(1) : '—'
   const label     = sensorType === 'icmp' ? 'ICMP Ping' : `TCP:${sensorName}`
 
+  const packetLoss = latest?.packet_loss_pct as number | undefined
+
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className={`bg-surface-card border rounded-xl p-5 ${reachable === false ? 'border-red-500/40' : reachable ? 'border-emerald-500/20' : 'border-surface-border'}`}>
           <p className="text-xs text-ink-muted/60">{label}</p>
           <p className={`text-3xl font-bold font-mono mt-2 ${reachable === false ? 'text-red-400' : reachable ? 'text-emerald-400' : 'text-ink-muted'}`}>
@@ -634,12 +636,28 @@ function ConnSensorDetail({ hostIp, sensorType, sensorName, range, setRange }: {
           </p>
           {errMsg && <p className="text-xs text-red-400/80 mt-1 truncate">{errMsg}</p>}
         </div>
-        <MetricCard label="Latency" value={latency != null ? latency.toFixed(1) : null} unit=" ms" />
+        <MetricCard label="Latency (avg)" value={latency != null ? latency.toFixed(1) : null} unit=" ms" />
+        <MetricCard
+          label="Packet Loss"
+          value={packetLoss != null ? packetLoss.toFixed(0) : null}
+          unit="%"
+          accent={packetLoss != null && packetLoss > 0 ? (packetLoss >= 50 ? 'text-red-400' : 'text-amber-400') : 'text-emerald-400'}
+        />
         <MetricCard label={`Uptime (${hours}h)`} value={upPct} unit="%" />
       </div>
-      <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Latency History (ms)</p>
-        <LineChart series={latencySeries} unit=" ms" />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-surface-card border border-surface-border rounded-xl p-5">
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Latency (ms)</p>
+          <LineChart series={latencySeries} unit=" ms" />
+        </div>
+        <div className="bg-surface-card border border-surface-border rounded-xl p-5">
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Packet Loss (%)</p>
+          <LineChart series={[{
+            name: 'Packet Loss', color: '#ef4444',
+            data: (history as Record<string, unknown>[] ?? [])
+              .map((h) => ({ t: new Date(h.collected_at as string), v: (h.packet_loss_pct as number) ?? 0 })),
+          }]} unit="%" yMin={0} yMax={100} />
+        </div>
       </div>
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
         <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Reachability (1=up, 0=down)</p>

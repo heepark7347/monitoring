@@ -122,7 +122,7 @@ def get_summary():
                 cur.execute("""
                     SELECT DISTINCT ON (host_ip, sensor_type, sensor_name)
                         host_ip, sensor_type, sensor_name,
-                        is_reachable, latency_ms, collected_at
+                        is_reachable, latency_ms, packet_loss_pct, collected_at
                     FROM connectivity_metrics
                     ORDER BY host_ip, sensor_type, sensor_name, collected_at DESC
                 """)
@@ -364,7 +364,18 @@ def get_summary():
         latency   = r.get('latency_ms')
         type_label = 'ICMP' if r['sensor_type'] == 'icmp' else 'Port'
         display   = 'ICMP Ping' if r['sensor_type'] == 'icmp' else f"TCP:{r['sensor_name']}"
-        detail    = f"{latency:.1f}ms" if latency else ('Unreachable' if not reachable else 'Stale')
+        if not reachable:
+            detail = 'Unreachable'
+        elif stale:
+            detail = 'Stale'
+        else:
+            loss = r.get('packet_loss_pct')
+            parts = []
+            if latency is not None:
+                parts.append(f"{latency:.1f}ms")
+            if loss is not None and loss > 0:
+                parts.append(f"loss {loss:.0f}%")
+            detail = ' · '.join(parts) if parts else 'OK'
         s = {
             'key':         key,
             'host_ip':     r['host_ip'],
@@ -401,7 +412,7 @@ def get_connectivity_history(
         with conn.cursor() as cur:
             try:
                 cur.execute("""
-                    SELECT collected_at, is_reachable, latency_ms, error_msg
+                    SELECT collected_at, is_reachable, latency_ms, error_msg, packet_loss_pct
                     FROM connectivity_metrics
                     WHERE host_ip = %s AND sensor_type = %s AND sensor_name = %s
                       AND collected_at BETWEEN %s AND %s
