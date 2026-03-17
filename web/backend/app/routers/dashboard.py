@@ -116,8 +116,8 @@ def get_summary():
             node_rows = [r for r in fetchall_as_dict(cur)
                          if any((r['host_ip'], 'node', s) in enabled for s in _node_subs)]
 
-            # Connectivity (ICMP + Port)
-            conn_rows = []
+            # Connectivity (ICMP + Port) — latest metrics (keyed for O(1) lookup)
+            conn_data: dict[tuple, dict] = {}
             try:
                 cur.execute("""
                     SELECT DISTINCT ON (host_ip, sensor_type, sensor_name)
@@ -126,8 +126,10 @@ def get_summary():
                     FROM connectivity_metrics
                     ORDER BY host_ip, sensor_type, sensor_name, collected_at DESC
                 """)
-                conn_rows = [r for r in fetchall_as_dict(cur)
-                             if (r['host_ip'], r['sensor_type'], r['sensor_name']) in enabled]
+                for r in fetchall_as_dict(cur):
+                    k = (r['host_ip'], r['sensor_type'], r['sensor_name'])
+                    if k in enabled:
+                        conn_data[k] = r
             except Exception:
                 pass  # Table may not exist yet
 
@@ -354,22 +356,28 @@ def get_summary():
                 alerts.append(s_uptime)
 
     # ── Connectivity (ICMP + Port) ─────────────────────────────────
-    for r in conn_rows:
-        key       = f"{r['host_ip']}:{r['sensor_type']}:{r['sensor_name']}"
-        stale     = _is_stale(r.get('collected_at'))
-        reachable = bool(r.get('is_reachable', False))
+    # sensor_configs 기준으로 emit — connectivity_metrics 데이터 없어도 표시
+    for (host_ip, sensor_type, sensor_name) in sorted(enabled):
+        if sensor_type not in ('icmp', 'port'):
+            continue
+        key  = f"{host_ip}:{sensor_type}:{sensor_name}"
+        r    = conn_data.get((host_ip, sensor_type, sensor_name))  # None if no data yet
+        stale     = _is_stale(r.get('collected_at') if r else None)
+        reachable = bool(r.get('is_reachable', False)) if r else False
+        latency   = r.get('latency_ms') if r else None
+        loss      = r.get('packet_loss_pct') if r else None
         st        = _sensor_status(key, paused,
                                    down=stale or not reachable,
                                    warn=False)
-        latency   = r.get('latency_ms')
-        type_label = 'ICMP' if r['sensor_type'] == 'icmp' else 'Port'
-        display   = 'ICMP Ping' if r['sensor_type'] == 'icmp' else f"TCP:{r['sensor_name']}"
-        if not reachable:
+        type_label = 'ICMP' if sensor_type == 'icmp' else 'Port'
+        display    = 'ICMP Ping' if sensor_type == 'icmp' else f"TCP:{sensor_name}"
+        if r is None:
+            detail = 'Pending'
+        elif not reachable:
             detail = 'Unreachable'
         elif stale:
             detail = 'Stale'
         else:
-            loss = r.get('packet_loss_pct')
             parts = []
             if latency is not None:
                 parts.append(f"{latency:.1f}ms")
@@ -378,14 +386,14 @@ def get_summary():
             detail = ' · '.join(parts) if parts else 'OK'
         s = {
             'key':             key,
-            'host_ip':         r['host_ip'],
+            'host_ip':         host_ip,
             'type':            type_label,
-            'sensor_name':     r['sensor_name'],
+            'sensor_name':     sensor_name,
             'name':            display,
             'status':          st,
             'detail':          detail,
             'latency_ms':      latency,
-            'packet_loss_pct': r.get('packet_loss_pct'),
+            'packet_loss_pct': loss,
         }
         sensors.append(s)
         if st in ('down', 'warning'):
