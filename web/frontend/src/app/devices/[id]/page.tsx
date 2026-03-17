@@ -49,6 +49,35 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   )
 }
 
+// ── 센서 표시 이름 ─────────────────────────────────────────────
+const NODE_LABEL: Record<string, { name: string; desc: string }> = {
+  cpu:    { name: 'CPU Utilization',  desc: 'CPU 사용률 및 Load Average' },
+  memory: { name: 'Memory Usage',     desc: '메모리 사용률 및 가용량' },
+  uptime: { name: 'Uptime',           desc: '시스템 가동 시간' },
+  system: { name: 'System (legacy)',  desc: 'CPU + Memory 통합' },
+}
+const GPU_METRIC_LABEL: Record<string, { name: string; desc: string }> = {
+  utilization: { name: 'GPU Utilization', desc: 'GPU 코어 사용률 (%)' },
+  memory:      { name: 'GPU Memory',      desc: 'VRAM 사용량 및 여유' },
+  temperature: { name: 'Temperature',     desc: 'GPU 온도 (°C)' },
+  power:       { name: 'Power Usage',     desc: '소비 전력 (W)' },
+  health:      { name: 'Health / ECC',    desc: 'XID 에러, ECC, PCIe 상태' },
+  clock:       { name: 'Clock Speed',     desc: 'SM · MEM 클럭 (MHz)' },
+}
+
+function sensorDisplayName(type: string, name: string): { name: string; desc: string } {
+  if (type === 'node') return NODE_LABEL[name] ?? { name, desc: '' }
+  if (type === 'gpu') {
+    const [idx, metric] = name.split('_', 2)
+    const lbl = GPU_METRIC_LABEL[metric] ?? { name: metric, desc: '' }
+    return { name: `GPU ${idx} · ${lbl.name}`, desc: lbl.desc }
+  }
+  if (type === 'disk') return { name, desc: `디스크 사용률 — ${name}` }
+  if (type === 'network') return { name, desc: `네트워크 인터페이스 — ${name}` }
+  if (type === 'icmp') return { name: 'ICMP Ping', desc: 'ICMP 도달 여부 및 지연시간' }
+  return { name, desc: '' }
+}
+
 // ── Add Sensor 모달 ────────────────────────────────────────────
 function AddSensorModal({ hostIp, onClose, onAdded }: {
   hostIp: string; onClose: () => void; onAdded: () => void
@@ -61,6 +90,7 @@ function AddSensorModal({ hostIp, onClose, onAdded }: {
   const [loading, setLoading]     = useState(false)
 
   const unregistered = available?.filter(s => !s.registered) ?? []
+  const registeredList = available?.filter(s => s.registered) ?? []
   function sKey(s: AvailableSensor) { return `${s.sensor_type}::${s.sensor_name}` }
   function toggle(key: string) {
     setSelected(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
@@ -79,91 +109,133 @@ function AddSensorModal({ hostIp, onClose, onAdded }: {
     } finally { setLoading(false) }
   }
 
-  const registeredList = available?.filter(s => s.registered) ?? []
-  const gpuSensors  = unregistered.filter(s => s.sensor_type === 'gpu')
-  const sysSensors  = unregistered.filter(s => s.sensor_type === 'node')
-  const diskSensors = unregistered.filter(s => s.sensor_type === 'disk')
-  const netSensors  = unregistered.filter(s => s.sensor_type === 'network')
-  const connSensors = unregistered.filter(s => s.sensor_type === 'icmp')
+  // 타입별 그룹
+  const groups: { type: string; icon: string; label: string; sensors: AvailableSensor[] }[] = [
+    { type: 'gpu',     icon: '▣', label: 'GPU',               sensors: unregistered.filter(s => s.sensor_type === 'gpu') },
+    { type: 'node',    icon: '⬡', label: 'System',            sensors: unregistered.filter(s => s.sensor_type === 'node') },
+    { type: 'disk',    icon: '◫', label: 'Disk',              sensors: unregistered.filter(s => s.sensor_type === 'disk') },
+    { type: 'network', icon: '⇆', label: 'Network Interface', sensors: unregistered.filter(s => s.sensor_type === 'network') },
+    { type: 'icmp',    icon: '⟳', label: 'ICMP Ping',         sensors: unregistered.filter(s => s.sensor_type === 'icmp') },
+  ].filter(g => g.sensors.length > 0)
 
-  function SensorGroup({ label, icon, sensors }: { label: string; icon: string; sensors: AvailableSensor[] }) {
-    if (!sensors.length) return null
-    return (
-      <div>
-        <p className="text-xs text-ink-muted/50 font-mono mb-1.5">{icon} {label}</p>
-        <div className="space-y-1">
-          {sensors.map(s => {
-            const k = sKey(s); const on = selected.has(k)
-            return (
-              <label key={k} className={`flex items-center gap-3 px-3 py-2 rounded border cursor-pointer text-sm transition-colors ${on ? 'border-accent/40 bg-accent/5' : 'border-surface-border/40 hover:border-surface-border'}`}>
-                <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-accent h-3.5 w-3.5" />
-                <span className="font-mono text-ink/80 flex-1">{s.sensor_name}</span>
-              </label>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
+  const addCount = selected.size + (portInput.trim() ? 1 : 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-card border border-accent/20 rounded-xl p-6 w-full max-w-lg shadow-2xl flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm font-semibold text-ink/85 font-mono">Add Sensor</p>
+      <div className="bg-surface-card border border-accent/20 rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[88vh]">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border/50">
+          <div>
+            <p className="text-sm font-semibold text-ink/85 font-mono">Add Sensor</p>
+            <p className="text-xs text-ink-muted/50 font-mono mt-0.5">{hostIp}</p>
+          </div>
           <button onClick={onClose} className="text-ink-muted/60 hover:text-ink/70 text-lg leading-none">✕</button>
         </div>
-        {isLoading ? (
-          <p className="text-xs text-ink-muted/60 py-8 text-center">Scanning available sensors...</p>
-        ) : (
-          <div className="overflow-y-auto flex-1 pr-1 space-y-4">
-            <SensorGroup label="GPU Metrics" icon="▣" sensors={gpuSensors} />
-            <SensorGroup label="System" icon="⬡" sensors={sysSensors} />
-            <SensorGroup label="Disk" icon="◫" sensors={diskSensors} />
-            <SensorGroup label="Network Interface" icon="⇆" sensors={netSensors} />
-            <SensorGroup label="ICMP Ping" icon="⟳" sensors={connSensors} />
 
-            {/* Custom TCP Port */}
-            <div>
-              <p className="text-xs text-ink-muted/50 font-mono mb-1.5">⇌ TCP Port Check</p>
-              <input
-                value={portInput}
-                onChange={e => setPortInput(e.target.value.replace(/\D/g, ''))}
-                placeholder="Port number — e.g. 22, 80, 443, 3306, 5432"
-                className="w-full bg-surface-border/40 border border-surface-border/40 rounded px-3 py-2 text-sm text-ink font-mono outline-none focus:border-accent"
-                maxLength={5}
-              />
-              <p className="text-xs text-ink-muted/40 mt-1">Samples: 22 SSH · 80 HTTP · 443 HTTPS · 3306 MySQL · 5432 PostgreSQL · 6379 Redis · 27017 MongoDB</p>
-            </div>
-
-            {registeredList.length > 0 && (
-              <details className="text-xs">
-                <summary className="text-ink-muted/40 cursor-pointer hover:text-ink-muted">Already registered ({registeredList.length})</summary>
-                <div className="mt-2 space-y-1 opacity-50">
-                  {registeredList.map(s => (
-                    <div key={sKey(s)} className="flex items-center gap-3 px-3 py-1">
-                      <span className="w-4">{TYPE_ICON[s.sensor_type]}</span>
-                      <span className="w-16 text-ink-muted">{TYPE_LABEL[s.sensor_type]}</span>
-                      <span className="font-mono text-ink/60 flex-1">{s.sensor_name}</span>
-                      <span className="text-accent/60">✓</span>
-                    </div>
-                  ))}
+        {/* 콘텐츠 */}
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          {isLoading ? (
+            <p className="text-xs text-ink-muted/60 py-10 text-center">수집 가능한 센서 조회 중...</p>
+          ) : (
+            <>
+              {groups.map(g => (
+                <div key={g.type}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-ink-muted/60 uppercase tracking-wider">
+                      {g.icon} {g.label}
+                    </p>
+                    <button
+                      onClick={() => {
+                        const keys = g.sensors.map(s => sKey(s))
+                        const allOn = keys.every(k => selected.has(k))
+                        setSelected(prev => {
+                          const n = new Set(prev)
+                          allOn ? keys.forEach(k => n.delete(k)) : keys.forEach(k => n.add(k))
+                          return n
+                        })
+                      }}
+                      className="text-xs text-ink-muted/40 hover:text-accent transition-colors"
+                    >
+                      {g.sensors.every(s => selected.has(sKey(s))) ? '전체 해제' : '전체 선택'}
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {g.sensors.map(s => {
+                      const k   = sKey(s)
+                      const on  = selected.has(k)
+                      const lbl = sensorDisplayName(s.sensor_type, s.sensor_name)
+                      return (
+                        <label key={k} className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border cursor-pointer transition-colors ${on ? 'border-accent/40 bg-accent/5' : 'border-surface-border/40 hover:border-surface-border/70'}`}>
+                          <input type="checkbox" checked={on} onChange={() => toggle(k)} className="accent-accent h-3.5 w-3.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-ink/85 font-mono">{lbl.name}</p>
+                            {lbl.desc && <p className="text-xs text-ink-muted/50 mt-0.5">{lbl.desc}</p>}
+                          </div>
+                          {on && <span className="text-accent text-xs flex-shrink-0">✓</span>}
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
-              </details>
-            )}
-            {unregistered.length === 0 && !portInput && (
-              <p className="text-xs text-ink-muted/60 py-4 text-center">
-                {available?.length === 0 ? 'No collected data found.' : 'All available sensors are already registered.'}
-              </p>
-            )}
-          </div>
-        )}
-        <div className="flex gap-2 pt-4 border-t border-surface-border/50 mt-4">
-          <button onClick={submit} disabled={loading || (selected.size === 0 && !portInput.trim())}
-            className="bg-accent hover:bg-accent/80 disabled:opacity-50 text-black text-sm font-mono font-semibold px-4 py-2 rounded transition-colors">
-            {loading ? 'Adding...' : `Add (${selected.size + (portInput.trim() ? 1 : 0)})`}
+              ))}
+
+              {/* TCP Port */}
+              <div>
+                <p className="text-xs font-semibold text-ink-muted/60 uppercase tracking-wider mb-2">⇌ TCP Port Check</p>
+                <input
+                  value={portInput}
+                  onChange={e => setPortInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="포트 번호 입력 — 예) 22, 80, 443, 3306, 5432"
+                  className="w-full bg-surface-border/40 border border-surface-border/40 rounded-lg px-4 py-2.5 text-sm text-ink font-mono outline-none focus:border-accent"
+                  maxLength={5}
+                />
+                <p className="text-xs text-ink-muted/40 mt-1.5">22 SSH · 80 HTTP · 443 HTTPS · 3306 MySQL · 5432 PgSQL · 6379 Redis · 27017 MongoDB</p>
+              </div>
+
+              {/* 이미 등록된 센서 */}
+              {registeredList.length > 0 && (
+                <details className="text-xs">
+                  <summary className="text-ink-muted/40 cursor-pointer hover:text-ink-muted select-none">
+                    이미 등록된 센서 ({registeredList.length}개)
+                  </summary>
+                  <div className="mt-2 space-y-1 opacity-40 pointer-events-none">
+                    {registeredList.map(s => {
+                      const lbl = sensorDisplayName(s.sensor_type, s.sensor_name)
+                      return (
+                        <div key={sKey(s)} className="flex items-center gap-3 px-4 py-2 rounded border border-surface-border/30">
+                          <span className="text-ink-muted/60">{TYPE_ICON[s.sensor_type]}</span>
+                          <span className="flex-1 font-mono text-ink/60 text-xs">{lbl.name}</span>
+                          <span className="text-emerald-500/60 text-xs">등록됨</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </details>
+              )}
+
+              {groups.length === 0 && !portInput && (
+                <p className="text-xs text-ink-muted/60 py-6 text-center">
+                  {available?.length === 0
+                    ? '수집된 데이터가 없습니다. 에이전트가 실행 중인지 확인하세요.'
+                    : '추가 가능한 센서가 없습니다. 모두 등록되어 있습니다.'}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-surface-border/50">
+          <button
+            onClick={submit}
+            disabled={loading || addCount === 0}
+            className="bg-accent hover:bg-accent/80 disabled:opacity-40 text-black text-sm font-mono font-semibold px-5 py-2 rounded-lg transition-colors"
+          >
+            {loading ? '추가 중...' : addCount > 0 ? `${addCount}개 센서 추가` : '센서를 선택하세요'}
           </button>
-          <button onClick={onClose} className="text-sm text-ink-muted hover:text-ink/85 px-4 py-2">Cancel</button>
+          <button onClick={onClose} className="text-sm text-ink-muted hover:text-ink/85 px-3 py-2">
+            취소
+          </button>
         </div>
       </div>
     </div>

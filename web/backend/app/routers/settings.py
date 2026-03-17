@@ -46,7 +46,7 @@ def add_device(
 
 # ── 장비 수정 (display_name) ───────────────────────────────────
 @router.patch("/devices/{host_ip:path}")
-def update_device(host_ip: str, display_name: str = Body(...)):
+def update_device(host_ip: str, display_name: str = Body(..., embed=True)):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -104,10 +104,11 @@ def available_sensors(host_ip: str):
                 for suffix in GPU_METRIC_SUFFIXES:
                     result.append({"sensor_type": "gpu", "sensor_name": f"{idx}_{suffix}"})
 
-            # Node
+            # Node — 3 sub-sensors
             cur.execute("SELECT 1 FROM node_metrics WHERE host_ip = %s LIMIT 1", (host_ip,))
             if cur.fetchone():
-                result.append({"sensor_type": "node", "sensor_name": "system"})
+                for sub in ("cpu", "memory", "uptime"):
+                    result.append({"sensor_type": "node", "sensor_name": sub})
 
             # Disk
             cur.execute(
@@ -329,7 +330,8 @@ def _discover_sensors(host_ip: str):
 
             cur.execute("SELECT 1 FROM node_metrics WHERE host_ip = %s LIMIT 1", (host_ip,))
             if cur.fetchone():
-                rows.append((host_ip, 'node', 'system'))
+                for sub in ("cpu", "memory", "uptime"):
+                    rows.append((host_ip, 'node', sub))
 
             cur.execute(
                 "SELECT DISTINCT mountpoint FROM disk_metrics WHERE host_ip = %s ORDER BY mountpoint",
