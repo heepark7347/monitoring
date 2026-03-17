@@ -407,17 +407,16 @@ function SensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number }) 
 
 // ── ICMP / Port 센서 카드 ──────────────────────────────────────
 function IcmpSensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number }) {
-  const isIcmp   = sensor.type === 'ICMP'
-  const sType    = isIcmp ? 'icmp' : 'port'
-  const href     = `/devices/${deviceId}/sensors/${sType}/${encodeURIComponent(sensor.sensor_name)}`
-  const status   = sensor.status
-  const latency  = sensor.latency_ms
-  const loss     = sensor.packet_loss_pct
-  const isUp     = status === 'up'
+  const isIcmp  = sensor.type === 'ICMP'
+  const sType   = isIcmp ? 'icmp' : 'port'
+  const href    = `/devices/${deviceId}/sensors/${sType}/${encodeURIComponent(sensor.sensor_name)}`
+  const status  = sensor.status
+  const latency = sensor.latency_ms
+  const loss    = sensor.packet_loss_pct
+  const isUp    = status === 'up'
 
   return (
     <Link href={href} className={`block rounded-xl border p-4 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
-      {/* 헤더 */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-ink-muted/60 text-sm">{isIcmp ? '⟳' : '⇌'}</span>
@@ -426,34 +425,27 @@ function IcmpSensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number
         <div className="flex items-center gap-1.5">
           <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} />
           <span className={`text-xs font-mono font-semibold ${
-            status === 'down' ? 'text-red-400' : status === 'warning' ? 'text-amber-400' : 'text-emerald-400'
+            status === 'down' ? 'text-red-400' : status === 'warning' ? 'text-amber-400' :
+            status === 'pause' ? 'text-slate-400' : 'text-emerald-400'
           }`}>{status.toUpperCase()}</span>
         </div>
       </div>
-
-      {/* 센서명 */}
-      <p className="font-mono text-ink/85 text-sm font-semibold truncate mb-3">
+      <p className="font-mono text-ink/85 text-sm font-semibold truncate mb-1">
         {isIcmp ? 'ICMP Ping' : `TCP : ${sensor.sensor_name}`}
       </p>
-
-      {/* 지표 */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-surface/40 rounded-lg px-3 py-2">
-          <p className="text-xs text-ink-muted/50 mb-0.5">Latency</p>
-          <p className={`text-base font-bold font-mono ${isUp ? 'text-ink/85' : 'text-ink-muted/40'}`}>
-            {latency != null ? `${latency.toFixed(1)} ms` : '—'}
-          </p>
-        </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono">
+        <span>
+          <span className="text-ink-muted/60">RTT  </span>
+          <span className="text-ink/85">{isUp && latency != null ? `${latency.toFixed(1)} ms` : '—'}</span>
+        </span>
         {isIcmp && (
-          <div className="bg-surface/40 rounded-lg px-3 py-2">
-            <p className="text-xs text-ink-muted/50 mb-0.5">Packet Loss</p>
-            <p className={`text-base font-bold font-mono ${
-              loss == null || !isUp ? 'text-ink-muted/40' :
-              loss >= 50 ? 'text-red-400' : loss > 0 ? 'text-amber-400' : 'text-emerald-400'
-            }`}>
-              {isUp && loss != null ? `${loss.toFixed(0)}%` : '—'}
-            </p>
-          </div>
+          <span>
+            <span className="text-ink-muted/60">Loss </span>
+            <span className={
+              !isUp || loss == null ? 'text-ink-muted/40' :
+              loss >= 50 ? 'text-red-400' : loss > 0 ? 'text-amber-400' : 'text-ink/85'
+            }>{isUp && loss != null ? `${loss.toFixed(0)}%` : '—'}</span>
+          </span>
         )}
       </div>
     </Link>
