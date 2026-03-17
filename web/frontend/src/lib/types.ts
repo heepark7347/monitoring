@@ -112,13 +112,15 @@ export interface DiskLatest {
 export type SensorStatus = 'up' | 'down' | 'warning' | 'pause'
 
 export interface Sensor {
-  key:         string
-  host_ip:     string
-  type:        'GPU' | 'Disk' | 'Network' | 'Node' | 'ICMP' | 'Port'
-  sensor_name: string
-  name:        string
-  status:      SensorStatus
-  detail?:     string
+  key:              string
+  host_ip:          string
+  type:             'GPU' | 'Disk' | 'Network' | 'Node' | 'ICMP' | 'Port'
+  sensor_name:      string
+  name:             string
+  status:           SensorStatus
+  detail?:          string
+  latency_ms?:      number | null
+  packet_loss_pct?: number | null
 }
 
 export interface DashboardSummary {

@@ -377,13 +377,15 @@ def get_summary():
                 parts.append(f"loss {loss:.0f}%")
             detail = ' · '.join(parts) if parts else 'OK'
         s = {
-            'key':         key,
-            'host_ip':     r['host_ip'],
-            'type':        type_label,
-            'sensor_name': r['sensor_name'],
-            'name':        display,
-            'status':      st,
-            'detail':      detail,
+            'key':             key,
+            'host_ip':         r['host_ip'],
+            'type':            type_label,
+            'sensor_name':     r['sensor_name'],
+            'name':            display,
+            'status':          st,
+            'detail':          detail,
+            'latency_ms':      latency,
+            'packet_loss_pct': r.get('packet_loss_pct'),
         }
         sensors.append(s)
         if st in ('down', 'warning'):
