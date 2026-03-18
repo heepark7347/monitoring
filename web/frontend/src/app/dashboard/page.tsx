@@ -224,16 +224,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {nodes.length > 0 && (
-          <p className="text-xs text-ink-faint text-right">
-            k8s <span className="text-ink-muted">{nodes[0]?.k8s_version}</span> · 30초마다 갱신
-          </p>
-        )}
       </div>
-
-      <p className="text-xs text-ink-faint text-right">
-        총 <span className="text-ink-muted">{c?.total ?? 0}</span>개 센서 · 30초마다 갱신
-      </p>
     </div>
   )
 }
