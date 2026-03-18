@@ -122,11 +122,12 @@ export default function DevicesPage() {
   return (
     <div className="space-y-6">
       {/* 헤더 */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Devices</h1>
-          <p className="text-sm text-ink-muted/60 mt-0.5">등록된 모니터링 디바이스</p>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold text-ink">Devices</h1>
+        <p className="text-sm text-ink-muted/60 mt-0.5">등록된 모니터링 디바이스</p>
+      </div>
+
+      <div>
         <button
           onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 bg-accent hover:bg-accent/80 text-black text-sm font-mono font-semibold px-4 py-2 rounded-lg transition-colors"

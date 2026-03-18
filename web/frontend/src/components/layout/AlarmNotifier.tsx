@@ -44,7 +44,7 @@ export default function AlarmNotifier() {
       {downCount > 0 && (
         <button
           onClick={goToAlerts}
-          className="fixed top-16 right-5 z-50 flex items-center gap-2 bg-red-600/90 hover:bg-red-600 text-white rounded-full px-3 py-1.5 text-xs font-mono font-semibold shadow-lg shadow-red-900/40 animate-pulse transition-all"
+          className="fixed top-4 right-5 z-50 flex items-center gap-2 bg-red-600/90 hover:bg-red-600 text-white rounded-full px-3 py-1.5 text-xs font-mono font-semibold shadow-lg shadow-red-900/40 animate-pulse transition-all"
           title={`${downCount}개 센서 DOWN — 클릭하여 확인`}
         >
           <span className="text-sm">⚠</span>
