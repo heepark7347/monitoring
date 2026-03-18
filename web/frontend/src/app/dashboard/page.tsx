@@ -184,7 +184,7 @@ export default function DashboardPage() {
       {/* ── K8s Cluster Status ───────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink/85">Kubernetes Cluster</h2>
+          <h2 className="text-sm font-semibold text-ink/85">Monitoring Cluster</h2>
           <div className="flex items-center gap-5 text-xs font-mono">
             <span className="text-ink-muted/60">
               Master <span className="text-violet-300 font-semibold">{masterCount}</span>
