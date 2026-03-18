@@ -7,8 +7,8 @@ data:
   snmp.yml: |
     # ── 인증 설정 (v0.24+ 분리 형식) ────────────────────────────────────
     auths:
-      gpu_monitor_auth:
-        community: gpu-monitor
+      conb_monitor_auth:
+        community: conb-monitor
         version: 2
 
     # ── 모듈 정의 ────────────────────────────────────────────────────────

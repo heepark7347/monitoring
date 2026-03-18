@@ -51,7 +51,7 @@ data:
         metrics_path: /snmp
         params:
           module: [if_mib]
-          auth: [gpu_monitor_auth]
+          auth: [conb_monitor_auth]
         file_sd_configs:
           - files:
               - /etc/prometheus/targets/snmp-targets.json
@@ -73,7 +73,7 @@ data:
         metrics_path: /snmp
         params:
           module: [linux_base]
-          auth: [gpu_monitor_auth]
+          auth: [conb_monitor_auth]
         file_sd_configs:
           - files:
               - /etc/prometheus/targets/snmp-targets.json
