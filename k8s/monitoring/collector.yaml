@@ -35,8 +35,9 @@ spec:
         - name: collector
           image: python:3.11-slim
           command:
-            - python
-            - /app/collector.py
+            - sh
+            - -c
+            - apt-get update -qq && apt-get install -y -qq iputils-ping 2>/dev/null && python /app/collector.py
           env:
             - name: PYTHONPATH
               value: /deps
