@@ -32,7 +32,8 @@ export const jsonFetch = (url: string, method: 'POST' | 'PATCH' | 'DELETE', body
 
 export const api = {
   dashboard: {
-    summary: () => buildUrl('/api/dashboard/summary'),
+    summary:  () => buildUrl('/api/dashboard/summary'),
+    k8sNodes: () => buildUrl('/api/dashboard/k8s-nodes'),
     pause:   (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
     resume:  (key: string) => buildUrl(`/api/dashboard/sensors/${encodeURIComponent(key)}/pause`),
     connectivityHistory: (hostIp: string, sensorType: string, sensorName: string, hours: number) =>

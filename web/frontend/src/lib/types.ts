@@ -167,6 +167,32 @@ export interface AvailableSensor {
   config_id:   number | null
 }
 
+export interface K8sNode {
+  name:                string
+  roles:               string[]
+  ready:               boolean
+  internal_ip:         string | null
+  k8s_version:         string
+  os_image:            string
+  container_runtime:   string
+  cpu_capacity:        number
+  mem_capacity_gb:     number
+  cpu_allocatable:     number
+  mem_allocatable_gb:  number
+  pods_running:        number
+  pods_total:          number
+  pod_capacity:        number
+  mem_pressure:        boolean
+  disk_pressure:       boolean
+  pid_pressure:        boolean
+  unschedulable:       boolean
+}
+
+export interface K8sNodesResponse {
+  nodes: K8sNode[]
+  error?: string
+}
+
 export type TimeRange = '1H' | '6H' | '24H' | '7D'
 
 export interface TimeRangeOption {

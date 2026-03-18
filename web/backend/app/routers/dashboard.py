@@ -1,3 +1,5 @@
+import json
+import subprocess
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Query
 from ..database import get_conn, fetchall_as_dict
@@ -407,6 +409,113 @@ def get_summary():
         'total':   len(sensors),
     }
     return {'counts': counts, 'alerts': alerts, 'sensors': sensors}
+
+
+@router.get("/k8s-nodes")
+def get_k8s_nodes():
+    """kubectl로 k8s 클러스터 노드 상태를 반환"""
+    try:
+        result = subprocess.run(
+            ["kubectl", "get", "nodes", "-o", "json"],
+            capture_output=True, text=True, timeout=10
+        )
+        nodes_data = json.loads(result.stdout)
+
+        # 파드 수 집계 (Running 상태만)
+        pods_result = subprocess.run(
+            ["kubectl", "get", "pods", "-A", "-o", "json"],
+            capture_output=True, text=True, timeout=10
+        )
+        pods_data = json.loads(pods_result.stdout)
+        pod_counts: dict[str, dict] = {}  # node_name -> {running, total}
+        for pod in pods_data.get("items", []):
+            node_name = pod["spec"].get("nodeName")
+            if not node_name:
+                continue
+            if node_name not in pod_counts:
+                pod_counts[node_name] = {"running": 0, "total": 0}
+            pod_counts[node_name]["total"] += 1
+            phase = pod.get("status", {}).get("phase", "")
+            if phase == "Running":
+                pod_counts[node_name]["running"] += 1
+
+        nodes = []
+        for item in nodes_data.get("items", []):
+            meta   = item["metadata"]
+            status = item["status"]
+            spec   = item.get("spec", {})
+
+            name   = meta["name"]
+            labels = meta.get("labels", {})
+            roles  = [
+                k.replace("node-role.kubernetes.io/", "")
+                for k in labels
+                if k.startswith("node-role.kubernetes.io/")
+            ]
+
+            # 조건 파싱
+            conditions = {c["type"]: c["status"] for c in status.get("conditions", [])}
+            ready = conditions.get("Ready") == "True"
+            mem_pressure  = conditions.get("MemoryPressure") == "True"
+            disk_pressure = conditions.get("DiskPressure")   == "True"
+            pid_pressure  = conditions.get("PIDPressure")    == "True"
+
+            # IP
+            internal_ip = next(
+                (a["address"] for a in status.get("addresses", []) if a["type"] == "InternalIP"),
+                None
+            )
+
+            # 용량
+            capacity    = status.get("capacity", {})
+            allocatable = status.get("allocatable", {})
+
+            def _parse_cpu(s: str) -> float:
+                if s.endswith("m"):
+                    return int(s[:-1]) / 1000
+                return float(s)
+
+            def _parse_mem_gb(s: str) -> float:
+                if s.endswith("Ki"):
+                    return int(s[:-2]) / 1024 / 1024
+                if s.endswith("Mi"):
+                    return int(s[:-2]) / 1024
+                if s.endswith("Gi"):
+                    return float(s[:-2])
+                return float(s) / 1024 / 1024 / 1024
+
+            node_info = status.get("nodeInfo", {})
+            taints = spec.get("taints", [])
+            unschedulable = spec.get("unschedulable", False) or any(
+                t.get("effect") == "NoSchedule" for t in taints
+            )
+
+            pods = pod_counts.get(name, {"running": 0, "total": 0})
+
+            nodes.append({
+                "name":            name,
+                "roles":           roles if roles else ["worker"],
+                "ready":           ready,
+                "internal_ip":     internal_ip,
+                "k8s_version":     node_info.get("kubeletVersion", ""),
+                "os_image":        node_info.get("osImage", ""),
+                "container_runtime": node_info.get("containerRuntimeVersion", ""),
+                "cpu_capacity":    _parse_cpu(capacity.get("cpu", "0")),
+                "mem_capacity_gb": _parse_mem_gb(capacity.get("memory", "0Ki")),
+                "cpu_allocatable": _parse_cpu(allocatable.get("cpu", "0")),
+                "mem_allocatable_gb": _parse_mem_gb(allocatable.get("memory", "0Ki")),
+                "pods_running":    pods["running"],
+                "pods_total":      pods["total"],
+                "pod_capacity":    int(capacity.get("pods", "110")),
+                "mem_pressure":    mem_pressure,
+                "disk_pressure":   disk_pressure,
+                "pid_pressure":    pid_pressure,
+                "unschedulable":   unschedulable,
+            })
+
+        return {"nodes": nodes}
+    except Exception as e:
+        return {"nodes": [], "error": str(e)}
 
 
 @router.get("/connectivity/{host_ip:path}/history")
