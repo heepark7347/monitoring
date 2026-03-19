@@ -48,7 +48,7 @@ export default function Sidebar() {
 
       {/* Company logo */}
       <div className="px-5 py-4 border-t border-accent/20">
-        <Image src="/conb.png" alt="CONB" width={80} height={28} className="opacity-60" />
+        <Image src="/conb.png" alt="CONB" width={160} height={56} className="opacity-60 w-full h-auto" />
       </div>
 
       {/* Theme toggle + version */}
