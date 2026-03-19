@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import * as d3 from 'd3'
 
 export interface PingSeriesDef {
@@ -179,6 +179,34 @@ export default function PingComboChart({ series, height = 240 }: Props) {
 
   }, [series, hidden, height])
 
+  // 테이블용: 수집 시각별 행 구성
+  const tableRows = useMemo(() => {
+    // 모든 시리즈의 타임스탬프 합집합 (ms 기준 dedup)
+    const tsSet = new Map<number, Date>()
+    for (const s of series) {
+      for (const d of s.data) tsSet.set(d.t.getTime(), d.t)
+    }
+    const times = Array.from(tsSet.values()).sort((a, b) => b.getTime() - a.getTime())
+
+    // 각 시리즈의 데이터를 Map<ms, value>으로 인덱싱
+    const seriesMaps = series.map(s => {
+      const m = new Map<number, number | null>()
+      for (const d of s.data) m.set(d.t.getTime(), d.v)
+      return m
+    })
+
+    return times.map(t => ({
+      t,
+      values: seriesMaps.map(m => m.get(t.getTime()) ?? null),
+    }))
+  }, [series])
+
+  function fmtVal(v: number | null, axis: 'left' | 'right') {
+    if (v == null) return '—'
+    const num = Number.isInteger(v) ? String(v) : v.toFixed(2)
+    return num + (axis === 'left' ? ' ms' : '%')
+  }
+
   return (
     <div>
       <svg ref={svgRef} style={{ width: '100%', height: `${height}px`, display: 'block' }} />
@@ -207,6 +235,48 @@ export default function PingComboChart({ series, height = 240 }: Props) {
           )
         })}
       </div>
+
+      {/* 수집 데이터 테이블 */}
+      {tableRows.length > 0 && (
+        <div className="mt-4 overflow-auto max-h-64 rounded-lg border border-surface-border">
+          <table className="w-full text-xs font-mono border-collapse">
+            <thead className="sticky top-0 bg-surface-card z-10">
+              <tr>
+                <th className="text-left px-3 py-2 text-ink-muted/60 font-normal border-b border-surface-border whitespace-nowrap">
+                  수집 시각
+                </th>
+                {series.map(s => (
+                  <th
+                    key={s.key}
+                    className="text-right px-3 py-2 font-normal border-b border-surface-border whitespace-nowrap"
+                    style={{ color: s.color }}
+                  >
+                    {s.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row, i) => (
+                <tr key={row.t.getTime()} className={i % 2 === 0 ? 'bg-surface-base/30' : ''}>
+                  <td className="px-3 py-1.5 text-ink-muted/60 whitespace-nowrap">
+                    {d3.timeFormat('%m-%d %H:%M:%S')(row.t)}
+                  </td>
+                  {series.map((s, si) => (
+                    <td
+                      key={s.key}
+                      className="px-3 py-1.5 text-right whitespace-nowrap"
+                      style={{ color: row.values[si] != null ? s.color : '#475569' }}
+                    >
+                      {fmtVal(row.values[si], s.axis)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
