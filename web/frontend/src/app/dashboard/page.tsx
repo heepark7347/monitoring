@@ -1,7 +1,7 @@
 'use client'
 import useSWR from 'swr'
 import { fetcher, api } from '@/lib/api'
-import type { DashboardSummary, SensorStatus, K8sNode, K8sNodesResponse } from '@/lib/types'
+import type { DashboardSummary, SensorStatus, K8sNode, K8sNodesResponse, Device } from '@/lib/types'
 import SensorStatusDonut from '@/components/charts/SensorStatusDonut'
 
 const STATUS_CFG: Record<SensorStatus, { label: string; color: string; ring: string }> = {
@@ -114,8 +114,9 @@ function NodeRow({ node }: { node: K8sNode }) {
 }
 
 export default function DashboardPage() {
-  const { data }      = useSWR<DashboardSummary>(api.dashboard.summary(), fetcher, { refreshInterval: 30000 })
-  const { data: k8s } = useSWR<K8sNodesResponse>(api.dashboard.k8sNodes(), fetcher, { refreshInterval: 30000 })
+  const { data }       = useSWR<DashboardSummary>(api.dashboard.summary(), fetcher, { refreshInterval: 30000 })
+  const { data: k8s }  = useSWR<K8sNodesResponse>(api.dashboard.k8sNodes(), fetcher, { refreshInterval: 30000 })
+  const { data: devs } = useSWR<Device[]>(api.devices.list(), fetcher, { refreshInterval: 30000 })
   const c = data?.counts
 
   const nodes = k8s?.nodes ?? []
@@ -158,6 +159,34 @@ export default function DashboardPage() {
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* 센서 수 / 디바이스 수 요약 카드 */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-surface-card border border-surface-border rounded-xl p-6 flex items-center gap-5">
+          <div className="h-12 w-12 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-2xl flex-shrink-0">
+            ◎
+          </div>
+          <div>
+            <p className="text-xs text-ink-muted/50 uppercase tracking-widest font-mono mb-1">등록 센서</p>
+            <p className="text-4xl font-bold font-mono text-ink">{c?.total ?? '—'}</p>
+            <p className="text-xs text-ink-muted/50 mt-1 font-mono">
+              UP {c?.up ?? 0} · DOWN {c?.down ?? 0} · WARN {c?.warning ?? 0}
+            </p>
+          </div>
+        </div>
+        <div className="bg-surface-card border border-surface-border rounded-xl p-6 flex items-center gap-5">
+          <div className="h-12 w-12 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-2xl flex-shrink-0">
+            ⬡
+          </div>
+          <div>
+            <p className="text-xs text-ink-muted/50 uppercase tracking-widest font-mono mb-1">등록 디바이스</p>
+            <p className="text-4xl font-bold font-mono text-ink">{devs?.length ?? '—'}</p>
+            <p className="text-xs text-ink-muted/50 mt-1 font-mono">
+              {devs ? devs.map(d => d.display_name || d.host_ip).join(' · ') : '로딩 중...'}
+            </p>
+          </div>
         </div>
       </div>
 
