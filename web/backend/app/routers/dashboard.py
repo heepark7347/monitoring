@@ -576,7 +576,8 @@ def get_connectivity_history(
         with conn.cursor() as cur:
             try:
                 cur.execute("""
-                    SELECT collected_at, is_reachable, latency_ms, error_msg, packet_loss_pct
+                    SELECT collected_at, is_reachable, latency_ms, error_msg,
+                           packet_loss_pct, min_latency_ms, max_latency_ms
                     FROM connectivity_metrics
                     WHERE host_ip = %s AND sensor_type = %s AND sensor_name = %s
                       AND collected_at BETWEEN %s AND %s

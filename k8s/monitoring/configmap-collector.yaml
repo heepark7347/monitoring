@@ -186,6 +186,8 @@ data:
     CREATE INDEX IF NOT EXISTS idx_conn_metrics_time ON connectivity_metrics(collected_at DESC);
     CREATE INDEX IF NOT EXISTS idx_conn_metrics_host ON connectivity_metrics(host_ip, sensor_type, sensor_name);
     ALTER TABLE connectivity_metrics ADD COLUMN IF NOT EXISTS packet_loss_pct FLOAT;
+    ALTER TABLE connectivity_metrics ADD COLUMN IF NOT EXISTS min_latency_ms  FLOAT;
+    ALTER TABLE connectivity_metrics ADD COLUMN IF NOT EXISTS max_latency_ms  FLOAT;
 
     CREATE TABLE IF NOT EXISTS registered_devices (
         id           SERIAL PRIMARY KEY,
@@ -559,6 +561,8 @@ data:
             latency_ms      = None
             error_msg       = None
             packet_loss_pct = None
+            min_latency_ms  = None
+            max_latency_ms  = None
             try:
                 if sensor_type == 'icmp':
                     result = subprocess.run(
@@ -567,10 +571,14 @@ data:
                     )
                     out = result.stdout.decode()
                     is_reachable = result.returncode == 0
-                    # avg latency from rtt min/avg/max line
-                    avg_m = re.search(r'rtt min/avg/max[^=]*= [\d.]+/([\d.]+)/', out)
-                    if avg_m:
-                        latency_ms = float(avg_m.group(1))
+                    min_latency_ms = None
+                    max_latency_ms = None
+                    # min/avg/max from rtt line: "rtt min/avg/max/mdev = 0.1/0.4/0.7/0.1 ms"
+                    minmax_m = re.search(r'rtt min/avg/max[^=]*=\s*([\d.]+)/([\d.]+)/([\d.]+)', out)
+                    if minmax_m:
+                        min_latency_ms = float(minmax_m.group(1))
+                        latency_ms     = float(minmax_m.group(2))
+                        max_latency_ms = float(minmax_m.group(3))
                     elif is_reachable:
                         m = re.search(r'time=([\d.]+)', out)
                         latency_ms = float(m.group(1)) if m else None
@@ -593,14 +601,17 @@ data:
                 error_msg = str(e)[:200]
 
             results.append((now, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg,
-                            packet_loss_pct if sensor_type == 'icmp' else None))
+                            packet_loss_pct if sensor_type == 'icmp' else None,
+                            min_latency_ms  if sensor_type == 'icmp' else None,
+                            max_latency_ms  if sensor_type == 'icmp' else None))
 
         conn = get_db_conn()
         with conn:
             with conn.cursor() as cur:
                 execute_values(cur, """
                     INSERT INTO connectivity_metrics
-                        (collected_at, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg, packet_loss_pct)
+                        (collected_at, host_ip, sensor_type, sensor_name, is_reachable, latency_ms, error_msg,
+                         packet_loss_pct, min_latency_ms, max_latency_ms)
                     VALUES %s
                 """, results)
         conn.close()

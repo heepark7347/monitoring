@@ -10,6 +10,7 @@ import GaugeChart from '@/components/charts/GaugeChart'
 import LineChart from '@/components/charts/LineChart'
 import DonutChart from '@/components/charts/DonutChart'
 import MetricCard from '@/components/ui/MetricCard'
+import PingComboChart from '@/components/charts/PingComboChart'
 
 const STATUS_DOT: Record<SensorStatus, string> = {
   up:      'bg-emerald-400',
@@ -594,70 +595,74 @@ function ConnSensorDetail({ hostIp, sensorType, sensorName, range, setRange }: {
     fetcher, { refreshInterval: 30000 }
   )
 
-  const latest  = (history as Record<string, unknown>[] | undefined)?.[
-    ((history as unknown[]) ?? []).length - 1
-  ] as Record<string, unknown> | undefined
+  const hist = (history as Record<string, unknown>[] ?? [])
+  const latest = hist[hist.length - 1] as Record<string, unknown> | undefined
 
-  const reachable = latest?.is_reachable as boolean | undefined
-  const latency   = latest?.latency_ms as number | undefined
-  const errMsg    = latest?.error_msg as string | undefined
-
-  const latencySeries = [{
-    name: 'Latency (ms)', color: '#3b82f6',
-    data: (history as Record<string, unknown>[] ?? [])
-      .filter((h) => h.is_reachable)
-      .map((h) => ({ t: new Date(h.collected_at as string), v: (h.latency_ms as number) ?? 0 })),
-  }]
-  const upSeries = [{
-    name: 'Reachable', color: '#10b981',
-    data: (history as Record<string, unknown>[] ?? []).map((h) => ({
-      t: new Date(h.collected_at as string), v: h.is_reachable ? 1 : 0,
-    })),
-  }]
-
-  const upCount   = (history as Record<string, unknown>[] ?? []).filter((h) => h.is_reachable).length
-  const totalCnt  = (history as unknown[] ?? []).length
-  const upPct     = totalCnt > 0 ? ((upCount / totalCnt) * 100).toFixed(1) : '—'
-  const label     = sensorType === 'icmp' ? 'ICMP Ping' : `TCP:${sensorName}`
-
+  const reachable  = latest?.is_reachable as boolean | undefined
+  const latency    = latest?.latency_ms as number | undefined
+  const minLatency = latest?.min_latency_ms as number | undefined
+  const maxLatency = latest?.max_latency_ms as number | undefined
   const packetLoss = latest?.packet_loss_pct as number | undefined
+  const errMsg     = latest?.error_msg as string | undefined
+
+  const upCount = hist.filter(h => h.is_reachable).length
+  const upPct   = hist.length > 0 ? ((upCount / hist.length) * 100).toFixed(1) : '—'
+  const label   = sensorType === 'icmp' ? 'ICMP Ping' : `TCP:${sensorName}`
+
+  // 차트 시리즈 데이터
+  const mkT   = (h: Record<string, unknown>) => new Date(h.collected_at as string)
+  const pingSeries = [
+    {
+      key: 'downtime', label: 'Downtime', color: '#ef4444', axis: 'right' as const,
+      data: hist.map(h => ({ t: mkT(h), v: h.is_reachable ? 0 : 100 })),
+    },
+    {
+      key: 'ping_avg', label: 'Ping Time', color: '#3b82f6', axis: 'left' as const,
+      data: hist.map(h => ({ t: mkT(h), v: h.is_reachable ? (h.latency_ms as number | null) ?? null : null })),
+    },
+    {
+      key: 'ping_min', label: 'Minimum', color: '#10b981', axis: 'left' as const,
+      data: hist.map(h => ({ t: mkT(h), v: h.is_reachable ? (h.min_latency_ms as number | null) ?? null : null })),
+    },
+    {
+      key: 'ping_max', label: 'Maximum', color: '#f59e0b', axis: 'left' as const,
+      data: hist.map(h => ({ t: mkT(h), v: h.is_reachable ? (h.max_latency_ms as number | null) ?? null : null })),
+    },
+    {
+      key: 'pkt_loss', label: 'Packet Loss', color: '#8b5cf6', axis: 'right' as const,
+      data: hist.map(h => ({ t: mkT(h), v: (h.packet_loss_pct as number | null) ?? null })),
+    },
+  ]
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-4 gap-4">
-        <div className={`bg-surface-card border rounded-xl p-5 ${reachable === false ? 'border-red-500/40' : reachable ? 'border-emerald-500/20' : 'border-surface-border'}`}>
-          <p className="text-xs text-ink-muted/60">{label}</p>
-          <p className={`text-3xl font-bold font-mono mt-2 ${reachable === false ? 'text-red-400' : reachable ? 'text-emerald-400' : 'text-ink-muted'}`}>
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-5 gap-3">
+        <div className={`bg-surface-card border rounded-xl p-4 ${reachable === false ? 'border-red-500/40 bg-red-900/10' : reachable ? 'border-emerald-500/20' : 'border-surface-border'}`}>
+          <p className="text-xs text-ink-muted/60 font-mono">{label}</p>
+          <p className={`text-2xl font-bold font-mono mt-1 ${reachable === false ? 'text-red-400' : reachable ? 'text-emerald-400' : 'text-ink-muted'}`}>
             {reachable === undefined ? '—' : reachable ? 'UP' : 'DOWN'}
           </p>
           {errMsg && <p className="text-xs text-red-400/80 mt-1 truncate">{errMsg}</p>}
         </div>
-        <MetricCard label="Latency (avg)" value={latency != null ? latency.toFixed(1) : null} unit=" ms" />
+        <MetricCard label="Ping Time" value={latency != null ? latency.toFixed(2) : null} unit=" ms" />
+        <MetricCard label="Min" value={minLatency != null ? minLatency.toFixed(2) : null} unit=" ms" />
+        <MetricCard label="Max" value={maxLatency != null ? maxLatency.toFixed(2) : null} unit=" ms" />
         <MetricCard
           label="Packet Loss"
           value={packetLoss != null ? packetLoss.toFixed(0) : null}
           unit="%"
           accent={packetLoss != null && packetLoss > 0 ? (packetLoss >= 50 ? 'text-red-400' : 'text-amber-400') : 'text-emerald-400'}
         />
-        <MetricCard label={`Uptime (${hours}h)`} value={upPct} unit="%" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Latency (ms)</p>
-          <LineChart series={latencySeries} unit=" ms" />
-        </div>
-        <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-          <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Packet Loss (%)</p>
-          <LineChart series={[{
-            name: 'Packet Loss', color: '#ef4444',
-            data: (history as Record<string, unknown>[] ?? [])
-              .map((h) => ({ t: new Date(h.collected_at as string), v: (h.packet_loss_pct as number) ?? 0 })),
-          }]} unit="%" yMin={0} yMax={100} />
-        </div>
-      </div>
+
+      {/* 복합 차트 */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-3">Reachability (1=up, 0=down)</p>
-        <LineChart series={upSeries} unit="" yMin={0} yMax={1} />
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Ping 종합 차트</p>
+          <p className="text-xs text-ink-muted/40 font-mono">좌측 축: ms · 우측 축: %</p>
+        </div>
+        <PingComboChart series={pingSeries} height={260} />
       </div>
     </div>
   )
