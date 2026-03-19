@@ -162,6 +162,26 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* 상태 카드 4개 */}
+      <div className="grid grid-cols-4 gap-4">
+        {LEGEND.map(({ status, dot }) => {
+          const cfg   = STATUS_CFG[status]
+          const count = c?.[status] ?? 0
+          return (
+            <div key={status} className={`rounded-xl border p-5 ${cfg.ring}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`h-2 w-2 rounded-full ${dot}`} />
+                <p className={`text-xs font-semibold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</p>
+              </div>
+              <p className={`text-4xl font-bold font-mono ${cfg.color}`}>{count}</p>
+              <p className="text-xs text-ink-muted/60 mt-1">
+                {c?.total ? `전체의 ${Math.round((count / c.total) * 100)}%` : '—'}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
       {/* 센서 수 / 디바이스 수 요약 카드 */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-surface-card border border-surface-border rounded-xl p-6 flex items-center gap-5">
@@ -185,26 +205,6 @@ export default function DashboardPage() {
             <p className="text-4xl font-bold font-mono text-ink">{devs?.length ?? '—'}</p>
           </div>
         </div>
-      </div>
-
-      {/* 상태 카드 4개 */}
-      <div className="grid grid-cols-4 gap-4">
-        {LEGEND.map(({ status, dot }) => {
-          const cfg   = STATUS_CFG[status]
-          const count = c?.[status] ?? 0
-          return (
-            <div key={status} className={`rounded-xl border p-5 ${cfg.ring}`}>
-              <div className="flex items-center gap-2 mb-3">
-                <span className={`h-2 w-2 rounded-full ${dot}`} />
-                <p className={`text-xs font-semibold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</p>
-              </div>
-              <p className={`text-4xl font-bold font-mono ${cfg.color}`}>{count}</p>
-              <p className="text-xs text-ink-muted/60 mt-1">
-                {c?.total ? `전체의 ${Math.round((count / c.total) * 100)}%` : '—'}
-              </p>
-            </div>
-          )
-        })}
       </div>
 
       {/* ── K8s Cluster Status ───────────────────────────────────────── */}
