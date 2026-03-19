@@ -658,10 +658,6 @@ function ConnSensorDetail({ hostIp, sensorType, sensorName, range, setRange }: {
 
       {/* 복합 차트 */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs text-ink-muted/60 uppercase tracking-wider">Ping 종합 차트</p>
-          <p className="text-xs text-ink-muted/40 font-mono">좌측 축: ms · 우측 축: %</p>
-        </div>
         <PingComboChart series={pingSeries} height={260} />
       </div>
     </div>

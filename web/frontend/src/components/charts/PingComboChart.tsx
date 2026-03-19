@@ -181,8 +181,9 @@ export default function PingComboChart({ series, height = 240 }: Props) {
 
   return (
     <div>
+      <svg ref={svgRef} style={{ width: '100%', height: `${height}px`, display: 'block' }} />
       {/* 토글 버튼 */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mt-4">
         {series.map(s => {
           const isOn = !hidden.has(s.key)
           return (
@@ -206,7 +207,6 @@ export default function PingComboChart({ series, height = 240 }: Props) {
           )
         })}
       </div>
-      <svg ref={svgRef} style={{ width: '100%', height: `${height}px`, display: 'block' }} />
     </div>
   )
 }
