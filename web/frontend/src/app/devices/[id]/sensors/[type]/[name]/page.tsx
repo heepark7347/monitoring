@@ -316,7 +316,7 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
       {/* Health counters */}
       <div className="bg-surface-card border border-surface-border rounded-xl p-5">
         <p className="text-xs text-ink-muted/60 uppercase tracking-wider mb-4">GPU Health</p>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className={`rounded-lg px-4 py-3 border ${xid > 0 ? 'bg-red-900/30 border-red-500/40' : 'bg-surface-card/50 border-surface-border/50'}`}>
             <p className="text-xs text-ink-muted/60">XID Errors</p>
             <p className={`text-2xl font-bold font-mono mt-1 ${xid > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{xid}</p>
@@ -328,10 +328,6 @@ function GpuIndexOverview({ hostIp, gpuIdx, range, setRange }: {
           <div className="rounded-lg px-4 py-3 border bg-surface-card/50 border-surface-border/50">
             <p className="text-xs text-ink-muted/60">PCIe Replay</p>
             <p className="text-2xl font-bold font-mono mt-1 text-ink">{pcie}</p>
-          </div>
-          <div className="rounded-lg px-4 py-3 border bg-surface-card/50 border-surface-border/50">
-            <p className="text-xs text-ink-muted/60">Temperature</p>
-            <p className={`text-2xl font-bold font-mono mt-1 ${tempC >= 90 ? 'text-red-400' : tempC >= 80 ? 'text-amber-400' : 'text-ink'}`}>{tempC.toFixed(1)}°C</p>
           </div>
         </div>
       </div>

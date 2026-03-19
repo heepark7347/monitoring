@@ -8,7 +8,7 @@ from ..database import get_conn, fetchall_as_dict
 
 router = APIRouter()
 
-GPU_METRIC_SUFFIXES = ['utilization', 'memory', 'temperature', 'power', 'health', 'clock']
+GPU_METRIC_SUFFIXES = ['utilization', 'memory', 'temperature', 'power', 'health', 'clock']  # legacy only
 
 
 # ── 장비 조회 ──────────────────────────────────────────────────
@@ -95,14 +95,13 @@ def available_sensors(host_ip: str):
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # GPU — 6 metrics per GPU index
+            # GPU — GPU 인덱스별 1개 센서
             cur.execute(
                 "SELECT DISTINCT gpu_index FROM gpu_metrics WHERE host_ip = %s ORDER BY gpu_index",
                 (host_ip,)
             )
             for (idx,) in cur.fetchall():
-                for suffix in GPU_METRIC_SUFFIXES:
-                    result.append({"sensor_type": "gpu", "sensor_name": f"{idx}_{suffix}"})
+                result.append({"sensor_type": "gpu", "sensor_name": str(idx)})
 
             # Node — 에이전트 연결 여부와 무관하게 항상 3개 제공
             for sub in ("cpu", "memory", "uptime"):
@@ -329,8 +328,7 @@ def _discover_sensors(host_ip: str):
                 (host_ip,)
             )
             for (idx,) in cur.fetchall():
-                for suffix in GPU_METRIC_SUFFIXES:
-                    rows.append((host_ip, 'gpu', f"{idx}_{suffix}"))
+                rows.append((host_ip, 'gpu', str(idx)))
 
             cur.execute("SELECT 1 FROM node_metrics WHERE host_ip = %s LIMIT 1", (host_ip,))
             if cur.fetchone():

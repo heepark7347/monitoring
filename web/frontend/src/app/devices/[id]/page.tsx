@@ -69,6 +69,7 @@ function sensorDisplayName(type: string, name: string): { name: string; desc: st
   if (type === 'node') return NODE_LABEL[name] ?? { name, desc: '' }
   if (type === 'gpu') {
     const [idx, metric] = name.split('_', 2)
+    if (!metric) return { name: `GPU ${idx}`, desc: 'GPU 전체 상태 (utilization · memory · temperature · power · health · clock)' }
     const lbl = GPU_METRIC_LABEL[metric] ?? { name: metric, desc: '' }
     return { name: `GPU ${idx} · ${lbl.name}`, desc: lbl.desc }
   }
@@ -92,6 +93,7 @@ function AddSensorModal({ hostIp, onClose, onAdded }: {
   const unregistered = available?.filter(s => !s.registered) ?? []
   const registeredList = available?.filter(s => s.registered) ?? []
   function sKey(s: AvailableSensor) { return `${s.sensor_type}::${s.sensor_name}` }
+
   function toggle(key: string) {
     setSelected(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
   }
@@ -336,14 +338,19 @@ function SettingsTab({ hostIp }: { hostIp: string }) {
 function GpuIndexCard({ gpuIdx, sensors, deviceId }: {
   gpuIdx: string; sensors: Sensor[]; deviceId: number
 }) {
-  const status   = worstStatus(sensors.map(s => s.status as SensorStatus))
-  const href     = `/devices/${deviceId}/sensors/gpu/${gpuIdx}`
-  const util     = sensors.find(s => s.sensor_name.endsWith('_utilization'))
-  const mem      = sensors.find(s => s.sensor_name.endsWith('_memory'))
-  const temp     = sensors.find(s => s.sensor_name.endsWith('_temperature'))
-  const health   = sensors.find(s => s.sensor_name.endsWith('_health'))
-  const downList = sensors.filter(s => s.status === 'down').map(s => s.sensor_name.split('_')[1])
-  const warnList = sensors.filter(s => s.status === 'warning').map(s => s.sensor_name.split('_')[1])
+  const status = worstStatus(sensors.map(s => s.status as SensorStatus))
+  const href   = `/devices/${deviceId}/sensors/gpu/${gpuIdx}`
+
+  // 신형: sensor_name이 인덱스만 (e.g. '0') — 센서 1개
+  const isConsolidated = sensors.length === 1 && !sensors[0].sensor_name.includes('_')
+
+  // 구형: 메트릭별 센서
+  const util     = isConsolidated ? undefined : sensors.find(s => s.sensor_name.endsWith('_utilization'))
+  const mem      = isConsolidated ? undefined : sensors.find(s => s.sensor_name.endsWith('_memory'))
+  const temp     = isConsolidated ? undefined : sensors.find(s => s.sensor_name.endsWith('_temperature'))
+  const health   = isConsolidated ? undefined : sensors.find(s => s.sensor_name.endsWith('_health'))
+  const downList = isConsolidated ? [] : sensors.filter(s => s.status === 'down').map(s => s.sensor_name.split('_')[1])
+  const warnList = isConsolidated ? [] : sensors.filter(s => s.status === 'warning').map(s => s.sensor_name.split('_')[1])
 
   return (
     <Link href={href} className={`block rounded-xl border p-4 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
@@ -361,19 +368,25 @@ function GpuIndexCard({ gpuIdx, sensors, deviceId }: {
           }`}>{status.toUpperCase()}</span>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono mb-2">
-        {util && <span><span className="text-ink-muted/60">Util </span><span className="text-ink/85">{util.detail}</span></span>}
-        {mem  && <span><span className="text-ink-muted/60">Mem  </span><span className="text-ink/85">{mem.detail}</span></span>}
-        {temp && <span><span className="text-ink-muted/60">Temp </span><span className="text-ink/85">{temp.detail}</span></span>}
-        {health && health.status !== 'up' && (
-          <span className={health.status === 'down' ? 'text-red-400' : 'text-amber-400'}>{health.detail}</span>
-        )}
-      </div>
-      {(downList.length > 0 || warnList.length > 0) && (
-        <div className="flex flex-wrap gap-1">
-          {downList.map(m => <span key={m} className="text-xs bg-red-600/20 text-red-300 rounded px-1.5 py-0.5">{m}</span>)}
-          {warnList.map(m => <span key={m} className="text-xs bg-amber-600/20 text-amber-300 rounded px-1.5 py-0.5">{m}</span>)}
-        </div>
+      {isConsolidated ? (
+        sensors[0].detail && <p className="text-xs font-mono text-ink-muted/60">{sensors[0].detail}</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono mb-2">
+            {util && <span><span className="text-ink-muted/60">Util </span><span className="text-ink/85">{util.detail}</span></span>}
+            {mem  && <span><span className="text-ink-muted/60">Mem  </span><span className="text-ink/85">{mem.detail}</span></span>}
+            {temp && <span><span className="text-ink-muted/60">Temp </span><span className="text-ink/85">{temp.detail}</span></span>}
+            {health && health.status !== 'up' && (
+              <span className={health.status === 'down' ? 'text-red-400' : 'text-amber-400'}>{health.detail}</span>
+            )}
+          </div>
+          {(downList.length > 0 || warnList.length > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {downList.map(m => <span key={m} className="text-xs bg-red-600/20 text-red-300 rounded px-1.5 py-0.5">{m}</span>)}
+              {warnList.map(m => <span key={m} className="text-xs bg-amber-600/20 text-amber-300 rounded px-1.5 py-0.5">{m}</span>)}
+            </div>
+          )}
+        </>
       )}
     </Link>
   )

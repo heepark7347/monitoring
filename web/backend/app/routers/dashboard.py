@@ -141,12 +141,18 @@ def get_summary():
     sensors = []
     alerts  = []
 
-    # ── GPU (per-metric sensors, format: {gpu_index}_{metric}) ───
-    gpu_sensor_map: dict[tuple, set[str]] = {}
-    for (h, st, sn) in enabled:
-        if st == 'gpu' and '_' in sn:
+    # ── GPU ────────────────────────────────────────────────────────
+    # 구형: sensor_name = "{idx}_{metric}" / 신형: sensor_name = "{idx}"
+    gpu_sensor_map: dict[tuple, set[str]] = {}   # 구형
+    gpu_new_list:   list[tuple]           = []   # 신형
+    for (h, s_type, sn) in enabled:
+        if s_type != 'gpu':
+            continue
+        if '_' in sn:
             idx, metric = sn.split('_', 1)
             gpu_sensor_map.setdefault((h, idx), set()).add(metric)
+        else:
+            gpu_new_list.append((h, sn))
 
     for (host_ip, gpu_idx), metrics in sorted(gpu_sensor_map.items()):
         gpu   = gpu_data.get((host_ip, gpu_idx))
@@ -222,6 +228,45 @@ def get_summary():
             sensors.append(s)
             if st in ('down', 'warning'):
                 alerts.append(s)
+
+    # ── GPU 신형 (per-GPU consolidated) ───────────────────────────
+    for (host_ip, gpu_idx_str) in sorted(gpu_new_list):
+        gpu   = gpu_data.get((host_ip, gpu_idx_str))
+        stale = _is_stale(gpu['collected_at'] if gpu else None)
+        key   = f"{host_ip}:gpu:{gpu_idx_str}"
+
+        if not gpu or stale:
+            gpu_st = _sensor_status(key, paused, down=True, warn=False)
+            detail = 'No data' if not gpu else 'Stale'
+        else:
+            util_v  = float(gpu.get('gpu_utilization') or 0)
+            temp_v  = float(gpu.get('temperature_celsius') or 0)
+            used    = float(gpu.get('memory_used_mb') or 0)
+            free    = float(gpu.get('memory_free_mb') or 0)
+            total_m = used + free
+            mem_pct = (used / total_m * 100) if total_m > 0 else 0
+            xid     = float(gpu.get('xid_errors') or 0)
+            dbe     = float(gpu.get('ecc_dbe') or 0)
+            sbe     = float(gpu.get('ecc_sbe') or 0)
+
+            is_down = xid > 0 or dbe > 0 or util_v >= GPU_UTIL_DOWN or temp_v >= GPU_TEMP_DOWN or mem_pct >= GPU_MEM_DOWN
+            is_warn = util_v >= GPU_UTIL_WARN or temp_v >= GPU_TEMP_WARN or mem_pct >= GPU_MEM_WARN or sbe > 0
+            gpu_st  = _sensor_status(key, paused, down=is_down, warn=is_warn)
+            detail  = f"Util {util_v:.1f}% · Temp {temp_v:.1f}°C · Mem {mem_pct:.1f}%"
+
+        model = (gpu.get('model_name') or '') if gpu else ''
+        s = {
+            'key':         key,
+            'host_ip':     host_ip,
+            'type':        'GPU',
+            'sensor_name': gpu_idx_str,
+            'name':        f"GPU {gpu_idx_str}" + (f" · {model}" if model else ""),
+            'status':      gpu_st,
+            'detail':      detail,
+        }
+        sensors.append(s)
+        if gpu_st in ('down', 'warning'):
+            alerts.append(s)
 
     # ── Disk ──────────────────────────────────────────────────────
     for r in disk_rows:
