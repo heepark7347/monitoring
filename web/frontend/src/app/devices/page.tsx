@@ -142,7 +142,7 @@ export default function DevicesPage() {
       ) : devices.length === 0 ? (
         <p className="text-ink-muted/60 text-sm">등록된 디바이스가 없습니다.</p>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-3">
           {devices.map(d => {
             const statuses = hostStatusMap[d.host_ip] ?? []
             const status   = worstStatus(statuses as SensorStatus[])
@@ -154,9 +154,9 @@ export default function DevicesPage() {
               <Link
                 key={d.host_ip}
                 href={`/devices/${d.id}`}
-                className="block bg-surface-card border border-surface-border rounded-xl p-5 hover:border-accent/30 hover:bg-surface-card/60 transition-colors"
+                className="block bg-surface-card border border-surface-border rounded-xl px-3 py-2.5 hover:border-accent/30 hover:bg-surface-card/60 transition-colors"
               >
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
                     <div>
@@ -194,7 +194,7 @@ export default function DevicesPage() {
                   )}
                 </div>
 
-                <p className="text-xs text-ink-muted/60 mt-3">
+                <p className="text-xs text-ink-muted/60 mt-1.5">
                   {statuses.length > 0 ? `${statuses.length}개 센서 ·` : ''} 클릭하여 상세 보기
                 </p>
               </Link>

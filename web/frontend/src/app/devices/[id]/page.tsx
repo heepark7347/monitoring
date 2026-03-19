@@ -353,8 +353,8 @@ function GpuIndexCard({ gpuIdx, sensors, deviceId }: {
   const warnList = isConsolidated ? [] : sensors.filter(s => s.status === 'warning').map(s => s.sensor_name.split('_')[1])
 
   return (
-    <Link href={href} className={`block rounded-xl border p-4 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
-      <div className="flex items-start justify-between mb-3">
+    <Link href={href} className={`block rounded-xl border px-3 py-2 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
+      <div className="flex items-start justify-between mb-1.5">
         <div className="flex items-center gap-2">
           <span className="text-ink-muted/60 text-sm">▣</span>
           <span className="text-sm font-semibold text-ink">GPU {gpuIdx}</span>
@@ -397,14 +397,14 @@ function SensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number }) 
   const sensorType = SENSOR_TYPE_MAP[sensor.type] ?? sensor.type.toLowerCase()
   const href = `/devices/${deviceId}/sensors/${sensorType}/${encodeURIComponent(sensor.sensor_name)}`
   return (
-    <Link href={href} className={`block rounded-xl border p-4 transition-all hover:scale-[1.01] ${STATUS_BG[sensor.status]}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+    <Link href={href} className={`block rounded-xl border px-3 py-2 transition-all hover:scale-[1.01] ${STATUS_BG[sensor.status]}`}>
+      <div className="flex items-start justify-between mb-1">
+        <div className="flex items-center gap-1.5">
           <span className="text-ink-muted/60 text-sm">{TYPE_ICON[sensorType] ?? '◎'}</span>
           <span className="text-xs text-ink-muted font-mono">{TYPE_LABEL[sensorType] ?? sensor.type}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${STATUS_DOT[sensor.status]}`} />
+        <div className="flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[sensor.status]}`} />
           <span className={`text-xs font-mono font-semibold ${
             sensor.status === 'down' ? 'text-red-400' :
             sensor.status === 'warning' ? 'text-amber-400' :
@@ -412,7 +412,7 @@ function SensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number }) 
           }`}>{sensor.status.toUpperCase()}</span>
         </div>
       </div>
-      <p className="font-mono text-ink/85 text-sm font-semibold truncate mb-1">{sensor.name}</p>
+      <p className="font-mono text-ink/85 text-sm font-semibold truncate">{sensor.name}</p>
       {sensor.detail && <p className="text-xs text-ink-muted/60 font-mono truncate">{sensor.detail}</p>}
     </Link>
   )
@@ -429,21 +429,21 @@ function IcmpSensorCard({ sensor, deviceId }: { sensor: Sensor; deviceId: number
   const isUp    = status === 'up'
 
   return (
-    <Link href={href} className={`block rounded-xl border p-4 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+    <Link href={href} className={`block rounded-xl border px-3 py-2 transition-all hover:scale-[1.01] ${STATUS_BG[status]}`}>
+      <div className="flex items-start justify-between mb-1">
+        <div className="flex items-center gap-1.5">
           <span className="text-ink-muted/60 text-sm">{isIcmp ? '⟳' : '⇌'}</span>
           <span className="text-xs text-ink-muted font-mono">{isIcmp ? 'ICMP' : 'Port'}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} />
+        <div className="flex items-center gap-1">
+          <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[status]}`} />
           <span className={`text-xs font-mono font-semibold ${
             status === 'down' ? 'text-red-400' : status === 'warning' ? 'text-amber-400' :
             status === 'pause' ? 'text-slate-400' : 'text-emerald-400'
           }`}>{status.toUpperCase()}</span>
         </div>
       </div>
-      <p className="font-mono text-ink/85 text-sm font-semibold truncate mb-1">
+      <p className="font-mono text-ink/85 text-sm font-semibold truncate mb-0.5">
         {isIcmp ? 'ICMP Ping' : `TCP : ${sensor.sensor_name}`}
       </p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono">
@@ -556,7 +556,7 @@ export default function DeviceDetailPage() {
               {gpuGroups.length > 0 && (
                 <div>
                   <p className="text-xs text-ink-muted/50 uppercase tracking-wider font-mono mb-3">▣ GPU</p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-4 gap-2">
                     {gpuGroups.map(([idx, ss]) => (
                       <GpuIndexCard key={idx} gpuIdx={idx} sensors={ss} deviceId={deviceId} />
                     ))}
@@ -566,25 +566,25 @@ export default function DeviceDetailPage() {
               {nodeSensors.length > 0 && (
                 <div>
                   <p className="text-xs text-ink-muted/50 uppercase tracking-wider font-mono mb-3">⬡ System</p>
-                  <div className="grid grid-cols-3 gap-3">{nodeSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
+                  <div className="grid grid-cols-4 gap-2">{nodeSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
                 </div>
               )}
               {diskSensors.length > 0 && (
                 <div>
                   <p className="text-xs text-ink-muted/50 uppercase tracking-wider font-mono mb-3">◫ Disk</p>
-                  <div className="grid grid-cols-3 gap-3">{diskSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
+                  <div className="grid grid-cols-4 gap-2">{diskSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
                 </div>
               )}
               {netSensors.length > 0 && (
                 <div>
                   <p className="text-xs text-ink-muted/50 uppercase tracking-wider font-mono mb-3">⇆ Network</p>
-                  <div className="grid grid-cols-3 gap-3">{netSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
+                  <div className="grid grid-cols-4 gap-2">{netSensors.map(s => <SensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
                 </div>
               )}
               {connSensors.length > 0 && (
                 <div>
                   <p className="text-xs text-ink-muted/50 uppercase tracking-wider font-mono mb-3">⟳ Connectivity</p>
-                  <div className="grid grid-cols-3 gap-3">{connSensors.map(s => <IcmpSensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
+                  <div className="grid grid-cols-4 gap-2">{connSensors.map(s => <IcmpSensorCard key={s.key} sensor={s} deviceId={deviceId} />)}</div>
                 </div>
               )}
             </>
