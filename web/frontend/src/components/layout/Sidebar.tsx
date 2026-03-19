@@ -46,13 +46,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Company logo */}
-      <div className="px-5 py-4 border-t border-accent/20">
-        <Image src="/conb.png" alt="CONB" width={160} height={56} className={`w-full h-auto opacity-70 transition-all ${theme === 'dark' ? 'invert' : ''}`} />
-      </div>
-
       {/* Theme toggle + version */}
-      <div className="px-4 pb-4 space-y-3">
+      <div className="px-4 py-4 border-t border-accent/20 space-y-3">
         <button
           onClick={toggle}
           className="w-full flex items-center justify-between px-3 py-2 rounded border border-accent/20 hover:border-accent/50 hover:bg-accent/5 transition-colors group"
@@ -65,6 +60,11 @@ export default function Sidebar() {
           </span>
         </button>
         <p className="text-xs text-ink-faint font-mono px-1">v1.2.0</p>
+      </div>
+
+      {/* Company logo */}
+      <div className="px-5 pb-5">
+        <Image src="/conb.png" alt="CONB" width={160} height={56} className={`w-full h-auto opacity-70 transition-all ${theme === 'dark' ? 'invert' : ''}`} />
       </div>
     </aside>
   )
