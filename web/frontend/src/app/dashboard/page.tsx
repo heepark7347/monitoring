@@ -183,9 +183,6 @@ export default function DashboardPage() {
           <div>
             <p className="text-xs text-ink-muted/50 uppercase tracking-widest font-mono mb-1">등록 디바이스</p>
             <p className="text-4xl font-bold font-mono text-ink">{devs?.length ?? '—'}</p>
-            <p className="text-xs text-ink-muted/50 mt-1 font-mono">
-              {devs ? devs.map(d => d.display_name || d.host_ip).join(' · ') : '로딩 중...'}
-            </p>
           </div>
         </div>
       </div>
