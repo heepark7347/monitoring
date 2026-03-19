@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useTheme } from '@/components/providers/ThemeProvider'
 
@@ -45,8 +46,13 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Company logo */}
+      <div className="px-5 py-4 border-t border-accent/20">
+        <Image src="/conb.png" alt="CONB" width={80} height={28} className="opacity-60" />
+      </div>
+
       {/* Theme toggle + version */}
-      <div className="px-4 py-4 border-t border-accent/20 space-y-3">
+      <div className="px-4 pb-4 space-y-3">
         <button
           onClick={toggle}
           className="w-full flex items-center justify-between px-3 py-2 rounded border border-accent/20 hover:border-accent/50 hover:bg-accent/5 transition-colors group"
